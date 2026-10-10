@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-server/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS
+*.log
+.DS_Store
+
+# TypeScript build info (regenerated)
+*.tsbuildinfo
+
+# Test / tooling
+coverage/
+.vite/

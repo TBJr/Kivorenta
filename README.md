@@ -1,0 +1,123 @@
+# Kivorenta
+
+**Email, Organized.** — by [TBJr](https://github.com/TBJr)
+
+A modern email management platform built with React, TypeScript, and Hono, featuring email composition, SMTP/IMAP integration, contacts, campaigns, and role-based access control.
+
+- **Repository:** [github.com/TBJr/kivorenta](https://github.com/TBJr/kivorenta)
+- **Version:** 0.1.0
+- **Status:** Independent development fork (derived from SendStack codebase; not connected to original CTN/SendStack production)
+
+## Features
+
+- React SPA with dashboard shell, composer (Tiptap), drafts, and preview
+- Hono API on Node/Vercel Functions
+- Better Auth (registration, login, password reset, email verification, manual verification)
+- Roles and permissions with administrative audit log
+- Contacts, lists, CSV import, suppressions, campaigns (queue simulation — no live bulk sending by default)
+- SMTP/IMAP integration (Spacemail-compatible settings)
+- BullMQ queue infrastructure (simulation-only guard)
+
+## Technology stack
+
+| Layer | Tools |
+| --- | --- |
+| Frontend | React 19, Vite, Tailwind CSS 4, shadcn/ui, React Router |
+| Backend | Hono, Better Auth, Drizzle ORM, PostgreSQL (Neon) |
+| Mail | Nodemailer, ImapFlow |
+| Queue | BullMQ, Redis (optional) |
+| Deploy | Vercel (SPA + `api/index.ts`) |
+
+## Local setup
+
+```bash
+cd /Users/thomasbrown/Herd/Kivorenta
+cp .env.example .env
+# Edit .env — use a NEW Neon database and NEW BETTER_AUTH_SECRET (never copy SendStack production values)
+npm install
+npm run db:migrate
+npm run dev
+```
+
+- **Client:** http://localhost:5173 (proxies `/api` to the API port)
+- **API:** http://localhost:3001
+
+Bootstrap the first super-admin (requires migrated schema):
+
+```bash
+export BOOTSTRAP_ADMIN_EMAIL=you@example.com
+npm run admin:bootstrap
+```
+
+## Environment variables
+
+See [`.env.example`](.env.example). Key groups:
+
+| Group | Variables |
+| --- | --- |
+| Branding | `APP_NAME`, `APP_COMPANY_NAME`, `VITE_APP_URL`, `VITE_CONTACT_EMAIL` |
+| Auth | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `FRONTEND_URL`, `AUTH_EMAIL_DELIVERY`, `SMTP_*` |
+| Database | `DATABASE_URL` |
+| Queue | `QUEUE_ENABLED`, `QUEUE_SIMULATION_ONLY`, `REDIS_URL`, `QUEUE_NAMESPACE` |
+| Mailbox | `SPACEMAIL_*` |
+
+`BETTER_AUTH_URL` and `FRONTEND_URL` must match the origin users visit. Trusted origins include apex/www pairs for public domains.
+
+## Database setup
+
+1. Create a **new** Neon PostgreSQL database for Kivorenta.
+2. Set `DATABASE_URL` in `.env`.
+3. Run `npm run db:migrate`.
+4. Optional: `npm run db:inspect` to verify connectivity.
+
+Destructive reset (`npm run db:reset`) drops only allowlisted application tables and requires `SENDSTACK_DB_RESET_CONFIRM=yes`. It does not drop the Neon branch.
+
+## Redis setup
+
+Optional until you enable queues:
+
+1. Create a **new** Redis instance (e.g. Upstash TCP URL `rediss://…`).
+2. Set `REDIS_URL` and `QUEUE_ENABLED=true` on workers/dispatcher hosts.
+3. Keep `QUEUE_SIMULATION_ONLY=true` unless you intentionally change sending policy.
+
+Queue names default to `{QUEUE_NAMESPACE}-campaign-dispatch` and `{QUEUE_NAMESPACE}-email-processing` (default namespace: `kivorenta`).
+
+## Email configuration
+
+- **Auth emails:** `AUTH_EMAIL_DELIVERY=console` logs links in development.
+- **Operational mailbox:** configure `SPACEMAIL_*` for SMTP/IMAP features; sender display name defaults to `APP_COMPANY_NAME` or `APP_NAME`.
+- Do not use original SendStack mailbox credentials in this project.
+
+## Vercel deployment
+
+See [`deploy/VERCEL.md`](deploy/VERCEL.md). Use a **new** Vercel project, domain, Neon database, Redis instance, and secrets.
+
+After deploy, `GET /api/health` should return JSON (`service: kivorenta-api`), not HTML.
+
+## Scripts
+
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Client + API watch mode |
+| `npm run build` | Production client + SSR prerender + typecheck project refs |
+| `npm run typecheck` | TypeScript |
+| `npm run lint` | ESLint |
+| `npm run test` | Vitest |
+| `npm run db:migrate` | Drizzle migrations |
+| `npm run admin:bootstrap` | First super-admin |
+
+## Known limitations
+
+- Campaign delivery remains simulation-only while `QUEUE_SIMULATION_ONLY=true`.
+- Legal pages are operator placeholders — obtain counsel-approved text before commercial use.
+- Logo/imagery: typographic wordmark until approved brand assets exist.
+
+## Provenance and licensing
+
+This codebase was derived from the SendStack project for independent development under TBJr. **No license file is included in this repository** — review upstream SendStack licensing and third-party dependency licenses before distribution. Preserve required open-source notices for bundled libraries (React, Hono, Better Auth, etc.) in your compliance process.
+
+**Do not** connect this tree to SendStack production Neon, Redis, Vercel, or mailbox credentials.
+
+## Maintainer
+
+**TBJr** — [github.com/TBJr](https://github.com/TBJr)
