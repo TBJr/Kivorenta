@@ -42,16 +42,55 @@ npm run dev
 - **Client:** http://localhost:5173 (proxies `/api` to the API port)
 - **API:** http://localhost:3001
 
-Bootstrap the first super-admin (requires migrated schema):
+### Bootstrap administrator
+
+Creates the **first** super-administrator (Better Auth + `super-admin` role). Idempotent: safe to run twice.
 
 ```bash
-export BOOTSTRAP_ADMIN_EMAIL=you@example.com
-npm run admin:bootstrap
+# Required
+export BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+export BOOTSTRAP_ADMIN_NAME=Administrator
+
+# Optional — if omitted, a secure temporary password is generated and shown once
+# export BOOTSTRAP_ADMIN_PASSWORD=
+
+npm run bootstrap:admin
 ```
+
+**Behavior**
+
+- First successful run: creates the user, verifies email, assigns `super-admin`, syncs `app_user_roles`, and sets **must change password** on first login.
+- If `BOOTSTRAP_ADMIN_PASSWORD` is unset: prints a **one-time temporary password** to the terminal (never stored in plaintext).
+- If the email already exists: **SKIPPED** — no password reset, no role changes.
+- If another super-admin already exists: **REFUSED** — use the in-app admin workflow to add users.
+- **First login:** sign in, then complete `/app/change-password/` before other app features (enforced server-side).
+- **Existing super-admin:** migration `0008_security_hardening.sql` grants a **14-day 2FA enrollment grace period** without forcing password reset. Optional rotation: `SECURITY_ROTATION_EMAIL=… npm run security:request-password-rotation` (does not change the password).
+- **Production:** run only from a trusted CLI session; do not commit bootstrap env vars; clear shell history if a generated password was displayed.
+
+### Security (password, 2FA, audit, invitations)
+
+- **Settings → Security** (`/app/settings/security/`): TOTP 2FA, backup codes, password-change status.
+- **Super-admin 2FA:** required after the grace deadline (`two_factor_enforcement_after` on `user`).
+- **Audit log:** `/app/admin/audit/` or `/app/admin/audit-logs/` (filter by action, event type, actor).
+- **User invitations:** `/app/admin/users/` — default expiry `USER_INVITATION_TTL_HOURS` (48).
+- **Transactional auth email:** set `AUTH_EMAIL_DELIVERY=smtp` and `SMTP_*` in production (`npm run env:check:production` rejects `console`).
+
+(`npm run admin:bootstrap` is an alias for the same script.)
 
 ## Environment variables
 
-See [`.env.example`](.env.example). Key groups:
+See [`.env.example`](.env.example). Validate locally (never prints secrets):
+
+```bash
+npm run env:check
+npm run env:check:production
+```
+
+Regenerate `.env` / `.env.production` auth secrets: `node scripts/configure-env.mjs` (backs up existing `.env` to `.env.backup.local`).
+
+**Rotate `BETTER_AUTH_SECRET`:** generate a new value, update env + Vercel, redeploy — existing sessions and signed tokens may invalidate.
+
+Key groups:
 
 | Group | Variables |
 | --- | --- |
@@ -59,7 +98,7 @@ See [`.env.example`](.env.example). Key groups:
 | Auth | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `FRONTEND_URL`, `AUTH_EMAIL_DELIVERY`, `SMTP_*` |
 | Database | `DATABASE_URL` |
 | Queue | `QUEUE_ENABLED`, `QUEUE_SIMULATION_ONLY`, `REDIS_URL`, `QUEUE_NAMESPACE` |
-| Mailbox | `SPACEMAIL_*` |
+| Mailbox | `SPACEMAIL_*`, `SPACEMAIL_TEST_RECIPIENTS` (comma-separated allowlist; legacy `SPACEMAIL_TEST_RECIPIENT`) |
 
 `BETTER_AUTH_URL` and `FRONTEND_URL` must match the origin users visit. Trusted origins include apex/www pairs for public domains.
 

@@ -33,7 +33,11 @@
     "db:migrate": "drizzle-kit migrate",
     "db:inspect": "tsx server/scripts/inspect-database.ts",
     "db:reset": "tsx server/scripts/reset-sendstack-db.ts",
+    "bootstrap:admin": "tsx server/scripts/bootstrap-admin.ts",
+    "security:request-password-rotation": "tsx server/scripts/request-password-rotation.ts",
     "admin:bootstrap": "tsx server/scripts/bootstrap-admin.ts",
+    "env:check": "tsx server/scripts/env-check.ts",
+    "env:check:production": "tsx server/scripts/env-check.ts --production",
     "mail:check": "tsx server/scripts/mail-check.ts",
     "auth:generate": "npx @better-auth/cli@latest generate --config ./server/auth/auth.ts --output ./server/db/schema.ts"
   },

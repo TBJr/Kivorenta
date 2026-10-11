@@ -51,6 +51,7 @@ export const testSendSchema = z.object({
     .refine((value) => !/[\r\n]/.test(value), "Subject cannot contain line breaks"),
   text: z.string().trim().min(1).max(20_000),
   html: z.string().max(100_000).optional(),
+  testRecipient: z.string().trim().email(),
   confirm: z.literal(true),
   idempotencyKey: z.string().uuid(),
 });

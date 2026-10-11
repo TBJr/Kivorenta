@@ -130,7 +130,7 @@ export async function sendIndividualEmail(
     to: input.to,
     cc: input.cc,
     bcc: input.bcc,
-    allowlist: [config.testRecipient],
+    allowlist: config.testRecipients,
     contactsByEmail: new Map(),
     suppressed: new Set(),
   });
@@ -142,7 +142,7 @@ export async function sendIndividualEmail(
     to: provisional.to,
     cc: provisional.cc,
     bcc: provisional.bcc,
-    allowlist: [normalizeEmail(config.testRecipient)],
+    allowlist: config.testRecipients.map((email) => normalizeEmail(email)),
     contactsByEmail: eligibility.contactsByEmail,
     suppressed: eligibility.suppressed,
   });

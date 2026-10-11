@@ -21,7 +21,7 @@ if (!loaded.ok) {
 const config = loaded.config;
 const summary: Record<string, unknown> = {
   account: config.email,
-  testRecipient: config.testRecipient,
+  testRecipients: config.testRecipients,
   smtp: "unknown",
   imap: "unknown",
 };
@@ -67,10 +67,12 @@ try {
   } else {
     const stamp = new Date().toISOString();
     const subject = `Kivorenta mailbox test ${stamp}`;
+    const testRecipient = config.testRecipients[0];
     const outcome = await sendControlledTest(db, admin.id, {
       subject,
       text: "This is one controlled mailbox test from the local Kivorenta app.",
       idempotencyKey: crypto.randomUUID(),
+      testRecipient,
     });
     summary.send = outcome.kind;
     if ("submission" in outcome) {

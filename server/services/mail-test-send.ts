@@ -1,5 +1,7 @@
 import type { Database } from "../db/index.js";
 import { loadMailConfig } from "../mail/configuration.js";
+import { isAuthorizedTestRecipient } from "../mail/test-recipients.js";
+import { normalizeEmail } from "../lib/email-normalization.js";
 import { MailboxError, safeErrorDetails } from "../mail/errors.js";
 import { plainTextToSafeHtml, sanitizeInboundHtml } from "../mail/html.js";
 import { performIdempotentSend } from "../mail/idempotency.js";
@@ -22,6 +24,7 @@ export type TestSendInput = {
   text: string;
   html?: string;
   idempotencyKey: string;
+  testRecipient: string;
 };
 
 export type TestSendOutcome =
@@ -116,6 +119,15 @@ export async function sendControlledTest(
     (task) => withPgAdvisoryLock(db, `sent-copy:${messageId}`, task);
 
   const config = loaded.config;
+  const toAddress = normalizeEmail(input.testRecipient);
+  if (!isAuthorizedTestRecipient(config, toAddress)) {
+    throw new MailboxError(
+      "The selected recipient is not on the authorized test-recipient allowlist.",
+      400,
+      "UNAUTHORIZED_PARTY",
+    );
+  }
+
   const outcome = await performIdempotentSend({
     lock,
     find: () => findSubmissionByKey(db, input.idempotencyKey),
@@ -134,7 +146,7 @@ export async function sendControlledTest(
         userId,
         idempotencyKey: input.idempotencyKey,
         fromAddress: config.email,
-        toAddress: config.testRecipient,
+        toAddress,
         subject: input.subject,
       }),
     send: async (pending) => {
@@ -144,6 +156,7 @@ export async function sendControlledTest(
           subject: input.subject,
           text: input.text,
           html,
+          to: toAddress,
         });
 
         if (!submitted.accepted) {

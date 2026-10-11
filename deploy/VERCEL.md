@@ -8,6 +8,23 @@ Deploy **Kivorenta** as a separate Vercel project from any SendStack / CTN produ
 - **Hono API** via `api/index.ts` (Vercel Function, nested `/api/*` rewrites in `vercel.json`)
 - **Better Auth** at `/api/auth/*` with HttpOnly cookies
 
+## Vercel environment checklist
+
+Copy from `.env.production` (local reference only — Vercel does not sync `.env.production` automatically):
+
+- [ ] `APP_NAME`, `APP_COMPANY_NAME`
+- [ ] `VITE_APP_URL` (Production + Preview; required at **build** time)
+- [ ] `BETTER_AUTH_URL`, `FRONTEND_URL` (same origin as the public site)
+- [ ] `BETTER_AUTH_SECRET` (unique production value, ≥ 32 characters)
+- [ ] `DATABASE_URL` (Kivorenta Neon — not SendStack)
+- [ ] `REDIS_URL` (`rediss://…` Upstash TCP/TLS — not REST)
+- [ ] `QUEUE_ENABLED`, `QUEUE_SIMULATION_ONLY=true`, `QUEUE_NAMESPACE`
+- [ ] `AUTH_EMAIL_DELIVERY` + `SMTP_*` when auth emails should send via SMTP
+- [ ] `SPACEMAIL_*` when mailbox/IMAP/composer send features are used
+- [ ] Optional: `VITE_CONTACT_EMAIL`, `BOOTSTRAP_*` (bootstrap is local-only)
+
+Do **not** set secrets with a `VITE_` prefix.
+
 ## Required environment variables
 
 Set these in the Vercel project (Production and Preview as needed):

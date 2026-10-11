@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { and, count, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
 
 import { loadEnv } from "../env.js";
 import { auth } from "../auth/auth.js";
@@ -25,11 +25,16 @@ import {
 } from "../db/schema.js";
 import { sendTransactionalEmail } from "../lib/email.js";
 import { validatePassword } from "../lib/password-policy.js";
+import { auditEventTypeForAction, sanitizeAuditMetadata, type AuditResult } from "../lib/security-audit.js";
 import { withPgAdvisoryLock } from "../mail/lock.js";
 import { permissionsForUser } from "./access-control.js";
 import { latestManualVerification, verificationView } from "./manual-email-verification.js";
 
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function inviteTtlMs(env: NodeJS.ProcessEnv = process.env) {
+  const hours = Number(env.USER_INVITATION_TTL_HOURS ?? "48");
+  if (!Number.isFinite(hours) || hours <= 0) return 48 * 60 * 60 * 1000;
+  return Math.min(24 * 14, hours) * 60 * 60 * 1000;
+}
 const INVITE_HOURLY_LIMIT = 10;
 
 function hashToken(token: string) {
@@ -46,6 +51,10 @@ export async function recordAudit(
     actorUserId: string | null;
     targetUserId?: string | null;
     action: string;
+    eventType?: string;
+    result?: AuditResult;
+    ipAddress?: string | null;
+    userAgent?: string | null;
     metadata?: Record<string, unknown>;
   },
 ) {
@@ -54,7 +63,11 @@ export async function recordAudit(
     actorUserId: input.actorUserId,
     targetUserId: input.targetUserId ?? null,
     action: input.action,
-    metadata: input.metadata,
+    eventType: input.eventType ?? auditEventTypeForAction(input.action),
+    result: input.result ?? "success",
+    ipAddress: input.ipAddress ?? null,
+    userAgent: input.userAgent ?? null,
+    metadata: sanitizeAuditMetadata(input.metadata),
   });
 }
 
@@ -479,10 +492,39 @@ export async function deleteRole(db: Database, actorId: string, roleId: string) 
   return { ok: true as const };
 }
 
+async function sendInvitationEmail(input: {
+  email: string;
+  inviteeName?: string | null;
+  token: string;
+  ttlMs: number;
+}) {
+  const env = loadEnv();
+  const link = `${env.FRONTEND_URL}/invite/?token=${encodeURIComponent(input.token)}`;
+  const hours = Math.round(input.ttlMs / (60 * 60 * 1000));
+  const greeting = input.inviteeName?.trim() ? `Hello ${input.inviteeName.trim()},` : "Hello,";
+  let deliveryStatus = "sent";
+  let deliveryError: string | null = null;
+  try {
+    const result = await sendTransactionalEmail(env, {
+      to: input.email,
+      subject: `You are invited to ${env.APP_NAME}`,
+      text: `${greeting}\n\nYou have been invited to ${env.APP_NAME}.\n\nAccept the invitation: ${link}\n\nThis link expires in ${hours} hours and can be used once.`,
+    });
+    if (!result.delivered) {
+      deliveryStatus = "not_sent";
+      deliveryError = "Email delivery is not configured, so the invitation was saved but not sent.";
+    }
+  } catch {
+    deliveryStatus = "failed";
+    deliveryError = "The invitation was saved, but the email could not be sent.";
+  }
+  return { deliveryStatus, deliveryError };
+}
+
 export async function createInvitation(
   db: Database,
   actor: { id: string; role?: string | null },
-  input: { email: string; roleKeys: string[] },
+  input: { email: string; name?: string; roleKeys: string[] },
 ) {
   const recent = await db
     .select({ id: userInvitations.id })
@@ -505,45 +547,105 @@ export async function createInvitation(
   });
   if (grantError) return { error: grantError, status: 403 as const };
   const email = input.email.trim().toLowerCase();
+  const inviteeName = input.name?.trim() || null;
   const [existingUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1);
   if (existingUser) return { error: "An account with that email already exists.", status: 409 as const };
+
+  const pending = await db.select().from(userInvitations).where(eq(userInvitations.email, email));
+  const now = Date.now();
+  const hasPending = pending.some(
+    (row) => !row.revokedAt && !row.acceptedAt && row.expiresAt.getTime() > now,
+  );
+  if (hasPending) {
+    return { error: "A pending invitation already exists for this email.", status: 409 as const };
+  }
+
+  const ttlMs = inviteTtlMs();
   const token = randomBytes(32).toString("base64url");
   const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + ttlMs);
   await db.insert(userInvitations).values({
     id,
     email,
+    inviteeName,
     roleKeys: input.roleKeys,
     tokenHash: hashToken(token),
-    expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+    expiresAt,
     invitedBy: actor.id,
     deliveryStatus: "pending",
   });
-  const env = loadEnv();
-  const link = `${env.FRONTEND_URL}/invite/?token=${encodeURIComponent(token)}`;
-  let deliveryStatus = "sent";
-  let deliveryError: string | null = null;
-  try {
-    const result = await sendTransactionalEmail(env, {
-      to: email,
-      subject: `You are invited to ${env.APP_NAME}`,
-      text: `You have been invited to ${env.APP_NAME}.\n\nAccept the invitation: ${link}\n\nThis link expires in 7 days and can be used once.`,
-    });
-    if (!result.delivered) {
-      deliveryStatus = "not_sent";
-      deliveryError = "Email delivery is not configured, so the invitation was saved but not sent.";
-    }
-  } catch {
-    deliveryStatus = "failed";
-    deliveryError = "The invitation was saved, but the email could not be sent.";
-  }
+  const { deliveryStatus, deliveryError } = await sendInvitationEmail({
+    email,
+    inviteeName,
+    token,
+    ttlMs,
+  });
   await db.update(userInvitations).set({ deliveryStatus, deliveryError }).where(eq(userInvitations.id, id));
   await recordAudit(db, {
     actorUserId: actor.id,
     action: "user_invited",
-    metadata: { email, roles: input.roleKeys, deliveryStatus },
+    metadata: { email, roles: input.roleKeys, deliveryStatus, inviteeName },
   });
   return {
-    invitation: { id, email, roleKeys: input.roleKeys, deliveryStatus, deliveryError, expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString() },
+    invitation: {
+      id,
+      email,
+      inviteeName,
+      roleKeys: input.roleKeys,
+      deliveryStatus,
+      deliveryError,
+      expiresAt: expiresAt.toISOString(),
+    },
+  };
+}
+
+export async function resendInvitation(db: Database, actorId: string, invitationId: string) {
+  const [invite] = await db.select().from(userInvitations).where(eq(userInvitations.id, invitationId)).limit(1);
+  if (!invite) return { error: "Invitation not found.", status: 404 as const };
+  if (invite.revokedAt) return { error: "This invitation has been revoked.", status: 400 as const };
+  if (invite.acceptedAt) return { error: "This invitation has already been used.", status: 400 as const };
+  if (invite.expiresAt.getTime() < Date.now()) return { error: "This invitation has expired.", status: 400 as const };
+
+  const recent = await db
+    .select({ id: userInvitations.id })
+    .from(userInvitations)
+    .where(gte(userInvitations.createdAt, new Date(Date.now() - 60 * 60 * 1000)));
+  if (recent.length >= INVITE_HOURLY_LIMIT) {
+    return { error: "Invitation sending is temporarily limited.", status: 429 as const };
+  }
+
+  const token = randomBytes(32).toString("base64url");
+  const ttlMs = inviteTtlMs();
+  const expiresAt = new Date(Date.now() + ttlMs);
+  const { deliveryStatus, deliveryError } = await sendInvitationEmail({
+    email: invite.email,
+    inviteeName: invite.inviteeName,
+    token,
+    ttlMs,
+  });
+  await db
+    .update(userInvitations)
+    .set({
+      tokenHash: hashToken(token),
+      expiresAt,
+      deliveryStatus,
+      deliveryError,
+      revokedAt: null,
+    })
+    .where(eq(userInvitations.id, invitationId));
+  await recordAudit(db, {
+    actorUserId: actorId,
+    action: "invitation_resent",
+    metadata: { invitationId, email: invite.email, deliveryStatus },
+  });
+  return {
+    invitation: {
+      id: invitationId,
+      email: invite.email,
+      deliveryStatus,
+      deliveryError,
+      expiresAt: expiresAt.toISOString(),
+    },
   };
 }
 
@@ -553,6 +655,7 @@ export async function listInvitations(db: Database) {
   return rows.map((row) => ({
     id: row.id,
     email: row.email,
+    inviteeName: row.inviteeName,
     roleKeys: row.roleKeys,
     deliveryStatus: row.deliveryStatus,
     deliveryError: row.deliveryError,
@@ -591,19 +694,52 @@ export async function acceptInvitation(db: Database, account: { id: string; emai
   return { ok: true as const };
 }
 
-export async function listAudit(db: Database, page: number, limit: number) {
-  const rows = await db.select().from(adminAuditEvents).orderBy(desc(adminAuditEvents.createdAt)).limit(limit).offset((page - 1) * limit);
-  const [totalRow] = await db.select({ total: count() }).from(adminAuditEvents);
+export async function listAudit(
+  db: Database,
+  query: {
+    page: number;
+    limit: number;
+    action?: string;
+    eventType?: string;
+    actorUserId?: string;
+    from?: Date;
+    to?: Date;
+  },
+) {
+  const filters = [];
+  if (query.action) filters.push(eq(adminAuditEvents.action, query.action));
+  if (query.eventType) filters.push(eq(adminAuditEvents.eventType, query.eventType));
+  if (query.actorUserId) filters.push(eq(adminAuditEvents.actorUserId, query.actorUserId));
+  if (query.from) filters.push(gte(adminAuditEvents.createdAt, query.from));
+  if (query.to) filters.push(lte(adminAuditEvents.createdAt, query.to));
+
+  const where = filters.length ? and(...filters) : undefined;
+  const rows = await db
+    .select()
+    .from(adminAuditEvents)
+    .where(where)
+    .orderBy(desc(adminAuditEvents.createdAt))
+    .limit(query.limit)
+    .offset((query.page - 1) * query.limit);
+  const [totalRow] = await db.select({ total: count() }).from(adminAuditEvents).where(where);
   return {
     events: rows.map((row) => ({
       id: row.id,
       action: row.action,
+      eventType: row.eventType,
+      result: row.result,
       actorUserId: row.actorUserId,
       targetUserId: row.targetUserId,
+      ipAddress: row.ipAddress,
       metadata: row.metadata ?? {},
       createdAt: row.createdAt.toISOString(),
     })),
-    pagination: { page, limit, total: Number(totalRow?.total ?? 0), totalPages: Math.max(1, Math.ceil(Number(totalRow?.total ?? 0) / limit)) },
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total: Number(totalRow?.total ?? 0),
+      totalPages: Math.max(1, Math.ceil(Number(totalRow?.total ?? 0) / query.limit)),
+    },
   };
 }
 

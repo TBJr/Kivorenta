@@ -8,6 +8,14 @@ export type TransactionalEmailPayload = {
   text: string;
 };
 
+/** Redact verification, reset, and invitation tokens from dev console previews. */
+export function redactAuthEmailText(text: string): string {
+  return text
+    .replace(/token=[^&\s]+/gi, "token=[redacted]")
+    .replace(/\/reset-password\/[^\s]+/gi, "/reset-password/[redacted]")
+    .replace(/\/invite\/\?token=[^\s]+/gi, "/invite/?token=[redacted]");
+}
+
 export type EmailDeliveryResult =
   | { delivered: true }
   | { delivered: false; devOnly: true; preview?: string };
@@ -26,12 +34,13 @@ export async function sendTransactionalEmail(
         "[auth-email] AUTH_EMAIL_DELIVERY=console in production — messages are not sent to recipients.",
       );
     }
+    const preview = redactAuthEmailText(payload.text);
     console.info("[auth-email]", {
       to: payload.to,
       subject: payload.subject,
-      text: payload.text,
+      text: preview,
     });
-    return { delivered: false, devOnly: true, preview: payload.text };
+    return { delivered: false, devOnly: true, preview };
   }
 
   const host = env.SMTP_HOST;

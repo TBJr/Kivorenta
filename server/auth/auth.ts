@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { admin } from "better-auth/plugins";
+import { admin, haveIBeenPwned, twoFactor } from "better-auth/plugins";
 
 import { sendstackAccessControl, sendstackAdminRoles } from "./access.js";
 import { createDb } from "../db/index.js";
@@ -27,12 +27,36 @@ export const auth = betterAuth({
     provider: "pg",
     schema,
   }),
+  user: {
+    additionalFields: {
+      mustChangePassword: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
+      twoFactorEnforcementAfter: {
+        type: "date",
+        required: false,
+        input: false,
+      },
+    },
+  },
   plugins: [
     admin({
       ac: sendstackAccessControl,
       roles: sendstackAdminRoles,
       defaultRole: "user",
       adminRoles: ["super-admin"],
+    }),
+    twoFactor({
+      issuer: appName,
+      backupCodeOptions: {
+        storeBackupCodes: "encrypted",
+      },
+    }),
+    haveIBeenPwned({
+      enabled: env.NODE_ENV !== "test",
     }),
   ],
   emailAndPassword: {

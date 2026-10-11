@@ -67,6 +67,7 @@ export const dashboardNavGroups: DashboardNavGroup[] = [
       { title: "Queue", url: "/app/queue/", icon: ListOrdered },
       { title: "History", url: "/app/history/", icon: History },
       { title: "Settings", url: "/app/settings/", icon: Settings },
+      { title: "Security", url: "/app/settings/security/", icon: Shield },
     ],
   },
   {

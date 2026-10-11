@@ -70,7 +70,7 @@ export type MailSubmission = {
 export type MailStatus = {
   configured: boolean;
   accountEmail: string | null;
-  testRecipient: string | null;
+  testRecipients: string[];
   senderName: string | null;
   outgoing: { status: ConnectionState; error: string | null };
   incoming: { status: ConnectionState; error: string | null };
@@ -169,6 +169,7 @@ export function listIndividualSends(page = 1, limit = 10) {
 export function sendMailTest(input: {
   subject: string;
   text: string;
+  testRecipient: string;
   confirm: true;
   idempotencyKey: string;
 }) {

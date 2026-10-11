@@ -2,6 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { authClient } from "@/lib/auth-client";
+import { useAccountGate } from "@/hooks/useAccountGate";
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
@@ -10,8 +11,9 @@ type ProtectedRouteProps = {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { pathname } = useLocation();
   const { data: session, isPending } = authClient.useSession();
+  const gate = useAccountGate();
 
-  if (isPending) {
+  if (isPending || gate.loading) {
     return <AuthLoadingScreen />;
   }
 
@@ -22,6 +24,14 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!session.user.emailVerified) {
     return <Navigate to="/verify-email/" replace state={{ email: session.user.email }} />;
+  }
+
+  if (gate.mustChangePassword && !pathname.startsWith("/app/change-password")) {
+    return <Navigate to="/app/change-password/" replace />;
+  }
+
+  if (gate.twoFactorEnforcementRequired && !pathname.startsWith("/app/settings/security")) {
+    return <Navigate to="/app/settings/security/" replace />;
   }
 
   return children;

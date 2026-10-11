@@ -57,6 +57,13 @@
       "when": 1791620000000,
       "tag": "0007_individual_email_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791630000000,
+      "tag": "0008_security_hardening",
+      "breakpoints": true
     }
   ]
 }

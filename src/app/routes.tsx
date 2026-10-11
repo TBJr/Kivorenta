@@ -28,7 +28,10 @@ import { RoleDetailsPage, RolesPage } from "@/pages/app/admin/RolesPage";
 import { UserDetailsPage } from "@/pages/app/admin/UserDetailsPage";
 import { CreateUserPage } from "@/pages/app/admin/CreateUserPage";
 import { UsersPage } from "@/pages/app/admin/UsersPage";
+import { ChangePasswordPage } from "@/pages/app/ChangePasswordPage";
+import { SecuritySettingsPage } from "@/pages/app/SecuritySettingsPage";
 import { SettingsPage } from "@/pages/app/SettingsPage";
+import { LoginTwoFactorPage } from "@/pages/LoginTwoFactorPage";
 import { TemplatesPage } from "@/pages/app/TemplatesPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { HomePage } from "@/pages/HomePage";
@@ -82,6 +85,10 @@ export const appRoutes = [
   {
     path: "/invite/",
     element: <InviteAcceptPage />,
+  },
+  {
+    path: "/login/two-factor/",
+    element: <LoginTwoFactorPage />,
   },
   {
     path: "/verify-email",
@@ -143,6 +150,9 @@ export const appRoutes = [
       { path: "queue/jobs/:jobId/", element: <QueueJobDetailsPage /> },
       { path: "history/", element: <HistoryPage /> },
       { path: "settings/", element: <SettingsPage /> },
+      { path: "settings/security/", element: <SecuritySettingsPage /> },
+      { path: "change-password/", element: <ChangePasswordPage /> },
+      { path: "admin/audit-logs/", element: <AuditPage /> },
       { path: "admin/users/", element: <UsersPage /> },
       { path: "admin/users/new/", element: <CreateUserPage /> },
       { path: "admin/users/:userId/", element: <UserDetailsPage /> },

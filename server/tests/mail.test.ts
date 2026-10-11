@@ -25,7 +25,7 @@ function validEnv(overrides: Record<string, string> = {}) {
     SPACEMAIL_IMAP_SECURE: "true",
     SPACEMAIL_EMAIL: "mailbox@example.com",
     SPACEMAIL_PASSWORD: SECRET,
-    SPACEMAIL_TEST_RECIPIENT: "mailbox@example.com",
+    SPACEMAIL_TEST_RECIPIENTS: "mailbox@example.com",
     SPACEMAIL_SENDER_NAME: "TBJr",
     ...overrides,
   };
@@ -72,7 +72,7 @@ describe("mailbox configuration", () => {
     expect(() =>
       assertAuthorizedParties(loaded.config, {
         from: loaded.config.email,
-        to: loaded.config.testRecipient,
+        to: loaded.config.testRecipients[0]!,
       }),
     ).not.toThrow();
     expect(() =>

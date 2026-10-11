@@ -124,7 +124,7 @@ export function assessDirectRecipients(input: RecipientPolicyInput): RecipientPo
     if (!allowlist.has(email)) {
       return {
         ok: false,
-        message: `${email} is not an authorized recipient. Direct sending is limited to the configured test recipient.`,
+        message: `${email} is not an authorized recipient. Direct sending is limited to configured test recipients.`,
       };
     }
     const blocked = eligibilityMessage(email, input.contactsByEmail.get(email), input.suppressed);

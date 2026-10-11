@@ -4,11 +4,15 @@ import { PageMeta } from "@/components/layout/PageMeta";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type AuditEvent = {
   id: string;
   action: string;
+  eventType: string | null;
+  result: string;
   actorUserId: string | null;
   targetUserId: string | null;
   createdAt: string;
@@ -18,22 +22,43 @@ type AuditEvent = {
 export function AuditPage() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [action, setAction] = useState("");
+  const [eventType, setEventType] = useState("");
+  const [actorUserId, setActorUserId] = useState("");
 
   useEffect(() => {
-    fetch("/api/admin/audit", { credentials: "include" })
+    const params = new URLSearchParams();
+    if (action.trim()) params.set("action", action.trim());
+    if (eventType.trim()) params.set("eventType", eventType.trim());
+    if (actorUserId.trim()) params.set("actorUserId", actorUserId.trim());
+    fetch(`/api/admin/audit?${params.toString()}`, { credentials: "include" })
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? "Could not load the audit log.");
         setEvents(payload.events);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load the audit log."));
-  }, []);
+  }, [action, eventType, actorUserId]);
 
   return (
     <>
       <PageMeta title="Audit log | Kivorenta" description="Administrative actions." canonicalPath="/app/admin/audit/" />
       <AppPageContainer className="max-w-[90rem]">
         <PageHeader title="Audit log" description="Sensitive account and role changes recorded by Kivorenta." />
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <div className="grid gap-1">
+            <Label htmlFor="audit-action">Action</Label>
+            <Input id="audit-action" value={action} onChange={(event) => setAction(event.target.value)} placeholder="password_changed" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="audit-type">Event type</Label>
+            <Input id="audit-type" value={eventType} onChange={(event) => setEventType(event.target.value)} placeholder="authentication" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="audit-actor">Actor user ID</Label>
+            <Input id="audit-actor" value={actorUserId} onChange={(event) => setActorUserId(event.target.value)} />
+          </div>
+        </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <Card>
           <CardContent className="p-0">
@@ -55,18 +80,22 @@ export function AuditPage() {
                 <TableRow>
                   <TableHead>When</TableHead>
                   <TableHead>Action</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Result</TableHead>
                   <TableHead>Actor</TableHead>
                   <TableHead>Target</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {events.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-muted-foreground">No administrative events yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-muted-foreground">No administrative events yet.</TableCell></TableRow>
                 ) : null}
                 {events.map((event) => (
                   <TableRow key={event.id}>
                     <TableCell>{new Date(event.createdAt).toLocaleString()}</TableCell>
                     <TableCell>{event.action}</TableCell>
+                    <TableCell>{event.eventType ?? "—"}</TableCell>
+                    <TableCell>{event.result}</TableCell>
                     <TableCell className="max-w-32 truncate" title={event.actorUserId ?? undefined}>{event.actorUserId ?? "—"}</TableCell>
                     <TableCell className="max-w-32 truncate" title={event.targetUserId ?? undefined}>{event.targetUserId ?? "—"}</TableCell>
                   </TableRow>

@@ -7,8 +7,13 @@ dist-server/
 
 # Environment and secrets
 .env
+.env.local
+.env.development
+.env.production
+.env.production.local
 .env.*
 !.env.example
+.env.backup*
 
 # Logs and OS
 *.log

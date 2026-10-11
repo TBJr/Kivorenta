@@ -11,7 +11,14 @@ import { accessDeniedMessage } from "./lib/brand.js";
 import { safeErrorLabel, logStartup } from "./lib/startup-log.js";
 import { getSessionUser } from "./lib/session.js";
 import { probeRedis } from "./queue/connection.js";
+import {
+  isApiPathAllowedDuringPasswordChange,
+  isApiPathAllowedDuringTwoFactorSetup,
+  loadAccountSecurityState,
+} from "./lib/account-security.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { recordAuthHandlerAudit } from "./services/auth-event-audit.js";
 import { registerCampaignRoutes } from "./routes/campaigns.js";
 import { registerContactImportRoutes } from "./routes/contact-import.js";
 import { registerContactListRoutes } from "./routes/contact-lists.js";
@@ -62,6 +69,27 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
     if (account && (account as { banned?: boolean | null }).banned) {
       return c.json({ error: accessDeniedMessage() }, 403);
     }
+    if (account) {
+      const security = await loadAccountSecurityState(db, account.id);
+      if (security?.mustChangePassword && !isApiPathAllowedDuringPasswordChange(c.req.path, c.req.method)) {
+        return c.json(
+          { error: "Change your password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" },
+          403,
+        );
+      }
+      if (
+        security?.twoFactorEnforcementRequired &&
+        !isApiPathAllowedDuringTwoFactorSetup(c.req.path, c.req.method)
+      ) {
+        return c.json(
+          {
+            error: "Configure two-factor authentication before continuing.",
+            code: "TWO_FACTOR_SETUP_REQUIRED",
+          },
+          403,
+        );
+      }
+    }
     const permission = permissionForRequest(c.req.path, c.req.method);
     if (!permission) return next();
     if (!account) return c.json({ error: "Unauthorized" }, 401);
@@ -74,6 +102,7 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
     probeDatabase: () => probeDatabase(env.DATABASE_URL),
     probeRedis,
   });
+  registerAccountRoutes(app);
   registerAdminRoutes(app);
   registerDraftRoutes(app);
   registerContactRoutes(app);
@@ -84,7 +113,21 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
   registerQueueRoutes(app);
   registerMailRoutes(app);
 
-  app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
+  app.all("/api/auth/*", async (c) => {
+    const response = await auth.handler(c.req.raw);
+    try {
+      await recordAuthHandlerAudit({
+        db,
+        path: c.req.path,
+        method: c.req.method,
+        status: response.status,
+        headers: c.req.raw.headers,
+      });
+    } catch (error) {
+      console.error("[auth-audit]", error instanceof Error ? error.message : "audit failed");
+    }
+    return response;
+  });
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
 

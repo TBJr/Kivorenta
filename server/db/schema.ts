@@ -20,12 +20,31 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  mustChangePassword: boolean("must_change_password").default(false).notNull(),
+  twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
+  twoFactorEnforcementAfter: timestamp("two_factor_enforcement_after"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+export const twoFactor = pgTable(
+  "twoFactor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: boolean("verified").default(true),
+    failedVerificationCount: integer("failed_verification_count").default(0),
+    lockedUntil: timestamp("locked_until"),
+  },
+  (table) => [uniqueIndex("twoFactor_user_id_unique").on(table.userId)],
+);
 
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
@@ -528,6 +547,10 @@ export const adminAuditEvents = pgTable(
     actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
     targetUserId: text("target_user_id").references(() => user.id, { onDelete: "set null" }),
     action: text("action").notNull(),
+    eventType: text("event_type"),
+    result: text("result").notNull().default("success"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -543,6 +566,7 @@ export const userInvitations = pgTable(
   {
     id: text("id").primaryKey(),
     email: text("email").notNull(),
+    inviteeName: text("invitee_name"),
     roleKeys: jsonb("role_keys").$type<string[]>().notNull().default([]),
     tokenHash: text("token_hash").notNull(),
     expiresAt: timestamp("expires_at").notNull(),

@@ -6,6 +6,7 @@ import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { validationError } from "../lib/http-errors.js";
 import { createUserSchema, manualEmailVerificationSchema } from "../validation/admin-users.js";
+import { loadAccountSecurityState } from "../lib/account-security.js";
 import { getSessionUser } from "../lib/session.js";
 import { manuallyVerifyUserEmail } from "../services/manual-email-verification.js";
 import type { PermissionKey } from "../auth/permissions.js";
@@ -25,6 +26,7 @@ import {
   listPermissionCatalog,
   listRoles,
   requestUserPasswordReset,
+  resendInvitation,
   revokeInvitation,
   revokeUserSessions,
   saveRole,
@@ -37,6 +39,7 @@ const { db } = createDb(env);
 
 const inviteSchema = z.object({
   email: z.email(),
+  name: z.string().trim().min(1).max(120).optional(),
   roleKeys: z.array(z.string().min(1)).min(1).max(5),
 });
 
@@ -133,6 +136,14 @@ export function registerAdminRoutes(app: Hono) {
     const access = await requirePermission(c, "users.invite");
     if ("response" in access) return access.response;
     return json(c, await revokeInvitation(db, access.user.id, c.req.param("id")));
+  });
+
+  app.post("/api/admin/invitations/:id/resend", async (c) => {
+    const access = await requirePermission(c, "users.invite");
+    if ("response" in access) return access.response;
+    const result = await resendInvitation(db, access.user.id, c.req.param("id"));
+    if ("error" in result) return json(c, { error: result.error }, result.status);
+    return json(c, result);
   });
 
   app.patch("/api/admin/users/:userId", async (c) => {
@@ -254,7 +265,22 @@ export function registerAdminRoutes(app: Hono) {
     if ("response" in access) return access.response;
     const page = Number(c.req.query("page") ?? "1");
     const limit = Number(c.req.query("limit") ?? "25");
-    return json(c, await listAudit(db, page > 0 ? page : 1, Math.min(50, limit > 0 ? limit : 25)));
+    const fromRaw = c.req.query("from");
+    const toRaw = c.req.query("to");
+    const from = fromRaw ? new Date(fromRaw) : undefined;
+    const to = toRaw ? new Date(toRaw) : undefined;
+    return json(
+      c,
+      await listAudit(db, {
+        page: page > 0 ? page : 1,
+        limit: Math.min(50, limit > 0 ? limit : 25),
+        action: c.req.query("action") ?? undefined,
+        eventType: c.req.query("eventType") ?? undefined,
+        actorUserId: c.req.query("actorUserId") ?? undefined,
+        from: from && !Number.isNaN(from.getTime()) ? from : undefined,
+        to: to && !Number.isNaN(to.getTime()) ? to : undefined,
+      }),
+    );
   });
 
   app.post("/api/invitations/accept", async (c) => {
@@ -275,6 +301,7 @@ export function registerAdminRoutes(app: Hono) {
     const account = await getSessionUser(c.req.raw.headers);
     if (!account) return json(c, { error: "Unauthorized" }, 401);
     const permissions = [...(await permissionsForUser(db, account))].sort();
+    const security = await loadAccountSecurityState(db, account.id);
     return json(c, {
       user: {
         id: account.id,
@@ -283,6 +310,10 @@ export function registerAdminRoutes(app: Hono) {
         emailVerified: account.emailVerified,
         role: (account as { role?: string }).role ?? "user",
         banned: Boolean((account as { banned?: boolean }).banned),
+        mustChangePassword: security?.mustChangePassword ?? false,
+        twoFactorEnabled: security?.twoFactorEnabled ?? false,
+        twoFactorEnforcementRequired: security?.twoFactorEnforcementRequired ?? false,
+        twoFactorEnforcementAfter: security?.twoFactorEnforcementAfter ?? null,
       },
       permissions,
     });

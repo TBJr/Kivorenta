@@ -1,6 +1,7 @@
 import { createTransport, type SendMailOptions } from "nodemailer";
 
-import { assertAuthorizedParties, type MailConfig } from "./configuration.js";
+import { assertAllRecipientsAuthorized, assertAuthorizedParties, type MailConfig } from "./configuration.js";
+import { normalizeEmail } from "../lib/email-normalization.js";
 import { friendlyMailError, MailboxError, redactSecrets, safeErrorDetails } from "./errors.js";
 
 const MAIL_TIMEOUTS = {
@@ -79,16 +80,8 @@ export async function submitComposerMessage(
   },
 ): Promise<CompiledSubmission> {
   const from = config.email;
-  const envelopeTo = [...new Set([...message.to, ...message.cc, ...message.bcc])];
-  for (const recipient of envelopeTo) {
-    if (recipient !== config.testRecipient) {
-      throw new MailboxError(
-        "Only the configured mailbox can send, and only to the authorized test recipient.",
-        400,
-        "UNAUTHORIZED_PARTY",
-      );
-    }
-  }
+  const envelopeTo = [...new Set([...message.to, ...message.cc, ...message.bcc].map((e) => normalizeEmail(e)))];
+  assertAllRecipientsAuthorized(config, { from, to: envelopeTo });
 
   const shared = {
     from: { name: config.senderName, address: from },
@@ -190,15 +183,16 @@ function addressList(value: unknown) {
 
 export async function submitAuthorizedMessage(
   config: MailConfig,
-  message: { subject: string; text: string; html: string },
+  message: { subject: string; text: string; html: string; to: string },
 ): Promise<CompiledSubmission> {
-  assertAuthorizedParties(config, { from: config.email, to: config.testRecipient });
+  const to = normalizeEmail(message.to);
+  assertAuthorizedParties(config, { from: config.email, to });
 
   const domain = config.email.split("@")[1] ?? "localhost";
   const messageId = `<${crypto.randomUUID()}@${domain}>`;
   const mail: SendMailOptions = {
     from: { name: config.senderName, address: config.email },
-    to: config.testRecipient,
+    to,
     subject: message.subject,
     text: message.text,
     html: message.html,
@@ -235,7 +229,7 @@ export async function submitAuthorizedMessage(
     const info = await transport.sendMail({
       envelope: {
         from: config.email,
-        to: config.testRecipient,
+        to,
       },
       raw,
       disableFileAccess: true,
@@ -243,9 +237,7 @@ export async function submitAuthorizedMessage(
     });
     const acceptedRecipients = addressList(info.accepted);
     const rejectedRecipients = addressList(info.rejected);
-    const accepted = acceptedRecipients.some(
-      (recipient) => recipient.toLowerCase() === config.testRecipient,
-    );
+    const accepted = acceptedRecipients.some((recipient) => normalizeEmail(recipient) === to);
     return {
       accepted: accepted && rejectedRecipients.length === 0,
       messageId,

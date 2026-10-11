@@ -74,6 +74,7 @@ export function SettingsPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [submission, setSubmission] = useState<MailSubmission | null>(null);
   const [duplicate, setDuplicate] = useState(false);
+  const [selectedTestRecipient, setSelectedTestRecipient] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +83,11 @@ export function SettingsPage() {
         if (cancelled) return;
         setStatus(result);
         setSubmission(result.latestSubmission);
+        if (result.testRecipients.length > 0) {
+          setSelectedTestRecipient((current) =>
+            current && result.testRecipients.includes(current) ? current : result.testRecipients[0]!,
+          );
+        }
         setLoading(false);
       })
       .catch((error: unknown) => {
@@ -124,6 +130,7 @@ export function SettingsPage() {
       const result = await sendMailTest({
         subject: subject.trim(),
         text: text.trim(),
+        testRecipient: selectedTestRecipient,
         confirm: true,
         idempotencyKey,
       });
@@ -152,8 +159,11 @@ export function SettingsPage() {
     }
   }
 
+  const hasTestRecipients = Boolean(status?.configured && status.testRecipients.length > 0);
+
   const canSend =
-    Boolean(status?.configured && status.testRecipient) &&
+    hasTestRecipients &&
+    selectedTestRecipient.length > 0 &&
     acknowledged &&
     subject.trim().length > 0 &&
     text.trim().length > 0 &&
@@ -237,7 +247,7 @@ export function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {status.configured && status.testRecipient ? (
+                {hasTestRecipients ? (
                   <form
                     className="space-y-4"
                     onSubmit={(event) => {
@@ -249,9 +259,23 @@ export function SettingsPage() {
                       <p className="text-muted-foreground">From</p>
                       <p>{status.accountEmail}</p>
                     </div>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-muted-foreground">Authorized test recipient</p>
-                      <p>{status.testRecipient}</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="test-recipient">Authorized test recipient</Label>
+                      <select
+                        id="test-recipient"
+                        className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        value={selectedTestRecipient}
+                        onChange={(event) => {
+                          setSelectedTestRecipient(event.target.value);
+                          setIdempotencyKey(null);
+                        }}
+                      >
+                        {status.testRecipients.map((recipient) => (
+                          <option key={recipient} value={recipient}>
+                            {recipient}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="test-subject">Subject</Label>
@@ -286,7 +310,7 @@ export function SettingsPage() {
                         onChange={(event) => setAcknowledged(event.target.checked)}
                       />
                       <span>
-                        I confirm this sends one message to {status.testRecipient} and does not start a campaign.
+                        I confirm this sends one message to {selectedTestRecipient} and does not start a campaign.
                       </span>
                     </label>
                     {sendError ? (
@@ -339,7 +363,7 @@ export function SettingsPage() {
             <AlertDialogTitle>Send one test message?</AlertDialogTitle>
             <AlertDialogDescription>
               This sends a single plain-text and HTML message from {status?.accountEmail} to{" "}
-              {status?.testRecipient}. Subject: {subject.trim() || "(empty)"}. Acceptance by the outgoing
+              {selectedTestRecipient}. Subject: {subject.trim() || "(empty)"}. Acceptance by the outgoing
               server does not confirm inbox delivery. Campaign queues are not used.
             </AlertDialogDescription>
           </AlertDialogHeader>
