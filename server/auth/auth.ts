@@ -7,7 +7,13 @@ import { createDb } from "../db/index.js";
 import * as schema from "../db/schema.js";
 import { loadEnv } from "../env.js";
 import { getAppName } from "../lib/brand.js";
+import {
+  classifyDatabaseError,
+  isPostgresAuthenticationError,
+  noteDatabaseFailure,
+} from "../lib/db-errors.js";
 import { sendTransactionalEmail } from "../lib/email.js";
+import { safeErrorLabel, safeLogText } from "../lib/startup-log.js";
 import { authTrustedOrigins } from "./origins.js";
 
 const env = loadEnv();
@@ -88,6 +94,31 @@ export const auth = betterAuth({
       secure: isProduction,
       sameSite: "lax",
       httpOnly: true,
+    },
+  },
+  logger: {
+    log(level, message, ...args: unknown[]) {
+      for (const arg of args) {
+        const failure = classifyDatabaseError(arg);
+        if (failure) {
+          noteDatabaseFailure(failure);
+          console.error(
+            `[database] unavailable kind=${failure.kind} code=${failure.code ?? "none"} ${safeErrorLabel(arg)}`,
+          );
+          return;
+        }
+        if (isPostgresAuthenticationError(arg)) {
+          console.error("[database] authentication rejected by server");
+          return;
+        }
+      }
+      if (level !== "error" && level !== "warn") return;
+      const detail = args
+        .map((arg) => (arg instanceof Error ? safeErrorLabel(arg) : ""))
+        .filter(Boolean)
+        .join(" ");
+      const line = safeLogText(detail ? `${message} ${detail}` : message);
+      console.error(`[auth] ${line}`);
     },
   },
 });

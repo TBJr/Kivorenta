@@ -1,4 +1,7 @@
+import { describeDatabaseTarget } from "./database-url.js";
 import { summarizeRedisUrl } from "../queue/redis-url.js";
+
+export { describeDatabaseTarget };
 
 const MAIL_KEYS = [
   "AUTH_EMAIL_DELIVERY",
@@ -21,17 +24,6 @@ const MAIL_KEYS = [
 ] as const;
 
 let logged = false;
-
-export function describeDatabaseTarget(databaseUrl: string) {
-  try {
-    const url = new URL(databaseUrl.replace(/^postgres(ql)?:/i, "http:"));
-    const database = url.pathname.replace(/^\//, "");
-    const sslmode = url.searchParams.get("sslmode") ?? "unset";
-    return `set host=${url.hostname} port=${url.port || "5432"} db=${database || "unset"} sslmode=${sslmode}`;
-  } catch {
-    return "invalid";
-  }
-}
 
 export function describeRedisTarget(redisUrl: string) {
   try {

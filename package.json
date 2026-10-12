@@ -10,7 +10,8 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n client,server -c cyan,magenta \"npm run dev:client\" \"npm run dev:server\"",
+    "dev": "concurrently -k -n client,server -c cyan,magenta \"npm run dev:client:ready\" \"npm run dev:server\"",
+    "dev:client:ready": "node scripts/wait-for-local-api.mjs && vite",
     "dev:api": "tsx watch server/index.ts",
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
@@ -31,6 +32,7 @@
     "queue:check:production": "tsx server/scripts/queue-check.ts --production",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:check": "tsx server/scripts/check-database.ts",
     "db:inspect": "tsx server/scripts/inspect-database.ts",
     "db:reset": "tsx server/scripts/reset-sendstack-db.ts",
     "bootstrap:admin": "tsx server/scripts/bootstrap-admin.ts",

@@ -37,6 +37,12 @@ export function validateConfirmPassword(password: string, confirm: string) {
 
 export function mapAuthErrorMessage(message: string) {
   const normalized = message.toLowerCase();
+  if (normalized.includes("database is temporarily unavailable") || normalized.includes("database_unavailable")) {
+    return "The database is temporarily unavailable. Try again shortly.";
+  }
+  if (normalized.includes("api is not accepting") || normalized.includes("api_unavailable")) {
+    return "The API is still starting. Try again shortly.";
+  }
   if (
     normalized.includes("invalid email or password") ||
     normalized.includes("invalid_email_or_password") ||

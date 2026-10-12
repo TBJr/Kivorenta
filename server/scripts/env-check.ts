@@ -8,6 +8,7 @@ import { parse } from "dotenv";
 
 import { z } from "zod";
 
+import { validateDatabaseUrl } from "../lib/database-url.js";
 import { mailboxCredentialsConfigured, parseTestRecipientsFromEnv } from "../mail/configuration.js";
 import { queueEnvSchema } from "../queue/configuration.js";
 import { assertRedisProtocolUrl, summarizeRedisUrl } from "../queue/redis-url.js";
@@ -222,15 +223,18 @@ function main() {
 
   const values = loaded.values;
   const findings: Finding[] = [...scanLegacy(values)];
+  const database = validateDatabaseUrl(values.DATABASE_URL);
+  findings.push({ key: "DATABASE_URL", status: database.status, detail: database.detail });
 
   const core = serverCoreSchema.safeParse(values);
   if (!core.success) {
     for (const issue of core.error.issues) {
       const key = String(issue.path[0] ?? "ENV");
+      if (key === "DATABASE_URL") continue;
       findings.push({ key, status: issue.message.includes("required") ? "MISSING" : "INVALID", detail: issue.message });
     }
   } else {
-    for (const key of ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "FRONTEND_URL"] as const) {
+    for (const key of ["BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "FRONTEND_URL"] as const) {
       if (values[key]?.trim()) {
         findings.push({ key, status: "VALID", detail: "Present" });
       }
@@ -262,6 +266,7 @@ function main() {
         file: filePath,
         mode: production ? "production" : "development",
         ok,
+        database: { status: database.status, detail: database.detail },
         summary: {
           valid: findings.filter((f) => f.status === "VALID").length,
           missing: findings.filter((f) => f.status === "MISSING").length,

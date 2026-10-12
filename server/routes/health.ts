@@ -42,16 +42,18 @@ export function registerHealthRoutes(app: Hono, probes: HealthProbes, limits: He
     const redis = await withDeadline(probes.probeRedis(), redisMs, "unavailable", "redis");
     logStartup("Redis check finished");
 
-    const ok = database === "ok";
+    const connected = database === "ok";
     logStartup("Response returned");
     return c.json(
       {
-        ok,
+        ok: connected,
+        status: connected ? "ok" : "degraded",
+        database: connected ? "connected" : "unavailable",
         service,
         checks: { api: "ok", database, redis },
         timestamp: new Date().toISOString(),
       },
-      ok ? 200 : 503,
+      connected ? 200 : 503,
     );
   });
 }

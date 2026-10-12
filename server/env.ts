@@ -5,11 +5,24 @@ import { loadConfiguredEnvFiles } from "./env-files.js";
 
 loadConfiguredEnvFiles();
 
+const emptyToUndefined = (value: unknown) =>
+  value === "" || value === undefined || value === null ? undefined : value;
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_NAME: z.string().min(1).max(80).default("Kivorenta"),
   APP_COMPANY_NAME: z.string().min(1).max(80).default("TBJr"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  /** Long-running server only. Vercel always uses a single connection. */
+  DATABASE_POOL_MAX: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(20).optional(),
+  ),
+  /** Rounded up to whole seconds for postgres.js. Defaults: 10s long-running, 8s Vercel. */
+  DATABASE_CONNECT_TIMEOUT_MS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1_000).max(30_000).optional(),
+  ),
   BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
   BETTER_AUTH_URL: z.string().url(),
   FRONTEND_URL: z.string().url(),

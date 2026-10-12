@@ -6,6 +6,13 @@ export function logStartup(stage: string) {
   console.info(`[startup] ${stage} +${Date.now() - startedAt}ms`);
 }
 
+/** Log text safe for logs: no database URLs, Redis URLs, or credential-shaped text. */
+export function safeLogText(value: string) {
+  const message = value.replace(URL_IN_TEXT, "[url]").replace(/\s+/g, " ").trim();
+  if (/password|secret|token|api[_-]?key|@/i.test(message)) return "[redacted]";
+  return message.slice(0, 200);
+}
+
 /** Error text safe for logs: no database URLs, Redis URLs, or credential-shaped text. */
 export function safeErrorLabel(error: unknown) {
   if (!(error instanceof Error)) return "Error";

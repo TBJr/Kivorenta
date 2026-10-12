@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 
 import { createSendStackApp } from "./app.js";
+import { closeDb } from "./db/index.js";
 import { getAppName } from "./lib/brand.js";
 import { loadEnv } from "./env.js";
 
@@ -20,7 +21,9 @@ const server = serve(
 
 function shutdown(signal: string) {
   console.info(`[api] shutting down (${signal})`);
-  server.close(() => process.exit(0));
+  server.close(() => {
+    void closeDb().finally(() => process.exit(0));
+  });
   setTimeout(() => process.exit(0), 10_000).unref();
 }
 

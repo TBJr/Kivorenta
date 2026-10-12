@@ -104,10 +104,13 @@ Key groups:
 
 ## Database setup
 
-1. Create a **new** Neon PostgreSQL database for Kivorenta.
-2. Set `DATABASE_URL` in `.env`.
+1. Create a **new** Neon PostgreSQL database for Kivorenta, or a local PostgreSQL database.
+2. Set `DATABASE_URL` in `.env`. Use the Neon **pooled** URL (`-pooler` in the host) with `sslmode=require` for the app. For local PostgreSQL, `sslmode=disable` on `127.0.0.1` is fine.
 3. Run `npm run db:migrate`.
-4. Optional: `npm run db:inspect` to verify connectivity.
+4. Check connectivity without printing credentials: `npm run db:check`.
+5. Optional: `npm run db:inspect` to list tables.
+
+Connection timeouts, health checks, and local PostgreSQL are documented in [`docs/DATABASE-CONNECTIVITY.md`](docs/DATABASE-CONNECTIVITY.md).
 
 Destructive reset (`npm run db:reset`) drops only allowlisted application tables and requires `SENDSTACK_DB_RESET_CONFIRM=yes`. It does not drop the Neon branch.
 
@@ -143,6 +146,7 @@ After deploy, `GET /api/health` should return JSON (`service: kivorenta-api`), n
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
 | `npm run db:migrate` | Drizzle migrations |
+| `npm run db:check` | `SELECT 1` connectivity check (credentials redacted) |
 | `npm run admin:bootstrap` | First super-admin |
 
 ## Known limitations

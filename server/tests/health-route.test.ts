@@ -47,6 +47,7 @@ describe("health routes", () => {
     expect(body.ok).toBe(false);
     expect(body.checks.database).toBe("unavailable");
     expect(body.checks.redis).toBe("disabled");
+    expect(body).toMatchObject({ status: "degraded", database: "unavailable" });
   });
 
   it("does not report success when the database is unavailable", async () => {
@@ -60,10 +61,16 @@ describe("health routes", () => {
     expect(response.status).toBe(503);
     const body = (await response.json()) as {
       ok: boolean;
+      status: string;
+      database: string;
       checks: { api: string; database: string; redis: string };
     };
     expect(body.ok).toBe(false);
+    expect(body.status).toBe("degraded");
+    expect(body.database).toBe("unavailable");
     expect(body.checks).toMatchObject({ api: "ok", database: "unavailable", redis: "ok" });
+    expect(JSON.stringify(body)).not.toContain("password");
+    expect(JSON.stringify(body)).not.toContain("ECONNREFUSED");
   });
 
   it("reports redis failure without failing a healthy database", async () => {
@@ -75,8 +82,15 @@ describe("health routes", () => {
 
     const response = await app.request("http://localhost/api/health");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; checks: { redis: string } };
+    const body = (await response.json()) as {
+      ok: boolean;
+      status: string;
+      database: string;
+      checks: { redis: string };
+    };
     expect(body.ok).toBe(true);
+    expect(body.status).toBe("ok");
+    expect(body.database).toBe("connected");
     expect(body.checks.redis).toBe("unavailable");
   });
 });

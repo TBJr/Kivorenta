@@ -11,8 +11,30 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
+        configure(proxy) {
+          proxy.on("error", (error, _request, response) => {
+            const code =
+              typeof error === "object" && error && "code" in error && typeof error.code === "string"
+                ? error.code
+                : "ECONNREFUSED";
+            console.error(`[dev] API proxy ${code}`);
+            if (!response || !("writeHead" in response) || !("headersSent" in response) || response.headersSent) {
+              return;
+            }
+            response.writeHead(503, {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+            });
+            response.end(
+              JSON.stringify({
+                error: "API is not accepting connections.",
+                code: "api_unavailable",
+              }),
+            );
+          });
+        },
       },
     },
   },

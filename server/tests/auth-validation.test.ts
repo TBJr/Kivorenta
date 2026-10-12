@@ -14,6 +14,19 @@ describe("mapAuthErrorMessage", () => {
     );
   });
 
+  it("describes a database outage without treating it as a rejected login", () => {
+    expect(mapAuthErrorMessage("Database is temporarily unavailable.")).toBe(
+      "The database is temporarily unavailable. Try again shortly.",
+    );
+    expect(mapAuthErrorMessage("database_unavailable")).not.toBe("Invalid email or password.");
+  });
+
+  it("describes an API that is still starting", () => {
+    expect(mapAuthErrorMessage("API is not accepting connections.")).toBe(
+      "The API is still starting. Try again shortly.",
+    );
+  });
+
   it("hides unexpected failures behind the generic message", () => {
     expect(mapAuthErrorMessage("Internal server error")).toBe(
       "Unable to complete the request. Please try again.",

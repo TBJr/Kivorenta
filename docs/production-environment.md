@@ -34,7 +34,9 @@ Never prefix secrets with `VITE_`.
 | `SMTP_USER` | Auth SMTP username | Required if smtp | Vercel API, Railway | **Yes** | |
 | `SMTP_PASS` | Auth SMTP password | Required if smtp | Vercel API, Railway | **Yes** | |
 | `SMTP_FROM` | Auth email From address | Required if smtp | Vercel API, Railway | No | Valid email; defaults to `SMTP_USER` if omitted in code. |
-| `DATABASE_URL` | PostgreSQL for Drizzle/Better Auth | **Required** | Shared (Vercel + Railway) | **Yes** | Use `sslmode=require` for Neon/managed Postgres. Serverless pool via `postgres` on Vercel. |
+| `DATABASE_URL` | PostgreSQL for Drizzle/Better Auth | **Required** | Shared (Vercel + Railway) | **Yes** | Neon pooled URL with `sslmode=require` for the running app. See `docs/DATABASE-CONNECTIVITY.md`. |
+| `DATABASE_POOL_MAX` | postgres.js pool size | Optional | Railway / local long-running | No | Default `10`. Ignored on Vercel, which keeps a single connection. Cap `20`. |
+| `DATABASE_CONNECT_TIMEOUT_MS` | TCP connect timeout | Optional | Shared | No | Rounded up to seconds. Default `10000` long-running, `8000` on Vercel. |
 | `REDIS_URL` | BullMQ/ioredis connection | Required if `QUEUE_ENABLED=true` | Shared | **Yes** | `redis://` or `rediss://` only — not Upstash REST HTTPS URL. Production should use `rediss://`. |
 | `QUEUE_ENABLED` | Enable queue features | Optional (default `false`) | Vercel API + Railway | No | Set `true` when Redis is configured. Railway worker/dispatcher exit if `false`. |
 | `QUEUE_SIMULATION_ONLY` | Phase 7 safety guard | **Required** | Vercel API + Railway | No | **Must be `true`.** Schema rejects `false`. |
@@ -56,7 +58,7 @@ Never prefix secrets with `VITE_`.
 | `SPACEMAIL_TEST_RECIPIENTS` | Allowlist for individual SMTP | Required when mailbox configured | Vercel API | No | Comma-separated; legacy `SPACEMAIL_TEST_RECIPIENT` supported. |
 | `USER_INVITATION_TTL_HOURS` | Admin invitation expiry | Optional | Vercel API | No | Default `48`. |
 | `PORT` | HTTP listen port | Optional | Railway API only | No | Default `3001`; ignored by Vercel Functions. |
-| `VERCEL` | Serverless flag | Auto | Vercel | No | Set by platform; affects DB singleton and seed behavior. |
+| `VERCEL` | Serverless flag | Auto | Vercel | No | Set by the platform. Forces a 1-connection pool and skips the access-control seed on the request path. |
 | `APP_ENV_FILE` / `SENDSTACK_ENV_FILE` | Local env file path | Optional | Local CLI only | No | e.g. `.env.production` for scripts. |
 | `BOOTSTRAP_ADMIN_*` | First super-admin CLI | Optional | Local CLI only | **Yes** (password) | Not for Vercel runtime; run `npm run bootstrap:admin` against production `DATABASE_URL` from a trusted machine. |
 | `SECURITY_ROTATION_EMAIL` | Password rotation flag CLI | Optional | Local CLI | No | |

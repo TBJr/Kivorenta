@@ -1,8 +1,11 @@
 import { Worker } from "bullmq";
 
-import { createDb } from "../db/index.js";
+import { eq } from "drizzle-orm";
+
+import { closeDb, createDb } from "../db/index.js";
 import { deliveryJobs } from "../db/schema.js";
 import { loadEnv } from "../env.js";
+import { safeErrorLabel } from "../lib/startup-log.js";
 import { getQueueNames, loadQueueEnv } from "../queue/configuration.js";
 import {
   closeRedisConnection,
@@ -16,11 +19,10 @@ import {
 } from "../services/simulation-processor.js";
 import { recordQueueEvent } from "../services/queue-events.js";
 import { updateCampaignSimulationProgress } from "../services/queue-service.js";
-import { eq } from "drizzle-orm";
 
 const env = loadEnv();
 const queueEnv = loadQueueEnv();
-const { db, client } = createDb(env);
+const { db } = createDb(env);
 
 let worker: Worker<EmailProcessingJobData> | null = null;
 let workerConnection: ReturnType<typeof getWorkerRedisConnection> | null = null;
@@ -79,7 +81,7 @@ function startWorker() {
   );
 
   worker.on("failed", (job, error) => {
-    console.error("[worker:email-processing] job failed", job?.id, error.message);
+    console.error("[worker:email-processing] job failed", job?.id, safeErrorLabel(error));
   });
 }
 
@@ -90,7 +92,7 @@ async function shutdown(signal: string) {
   workerConnection = null;
   await closeQueues();
   await closeRedisConnection();
-  await client.end({ timeout: 5 });
+  await closeDb();
   process.exit(0);
 }
 

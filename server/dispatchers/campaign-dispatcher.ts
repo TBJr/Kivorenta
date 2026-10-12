@@ -1,7 +1,8 @@
 import { Worker } from "bullmq";
 
-import { createDb } from "../db/index.js";
+import { closeDb, createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
+import { safeErrorLabel } from "../lib/startup-log.js";
 import { getQueueNames, loadQueueEnv } from "../queue/configuration.js";
 import {
   closeRedisConnection,
@@ -14,7 +15,7 @@ import { reconcileOrphanedPendingJobs } from "../services/queue-reconciliation.j
 
 const env = loadEnv();
 const queueEnv = loadQueueEnv();
-const { db, client } = createDb(env);
+const { db } = createDb(env);
 
 let worker: Worker<CampaignDispatchJobData> | null = null;
 let workerConnection: ReturnType<typeof getWorkerRedisConnection> | null = null;
@@ -35,7 +36,7 @@ function startDispatcher() {
 
   reconcileTimer = setInterval(() => {
     reconcileOrphanedPendingJobs(db).catch((error) => {
-      console.error("[dispatcher] reconciliation failed", error);
+      console.error("[dispatcher] reconciliation failed", safeErrorLabel(error));
     });
   }, 30_000);
 }
@@ -48,7 +49,7 @@ async function shutdown(signal: string) {
   workerConnection = null;
   await closeQueues();
   await closeRedisConnection();
-  await client.end({ timeout: 5 });
+  await closeDb();
   process.exit(0);
 }
 

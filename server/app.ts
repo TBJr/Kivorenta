@@ -8,6 +8,12 @@ import { createDb, probeDatabase, type Database } from "./db/index.js";
 import type { ServerEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { accessDeniedMessage } from "./lib/brand.js";
+import {
+  captureDatabaseFailures,
+  DatabaseUnavailableError,
+  peekDatabaseFailure,
+  publicApiError,
+} from "./lib/db-errors.js";
 import { safeErrorLabel, logStartup } from "./lib/startup-log.js";
 import { getSessionUser } from "./lib/session.js";
 import { probeRedis } from "./queue/connection.js";
@@ -65,7 +71,17 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
     ) {
       return next();
     }
-    const account = await getSessionUser(c.req.raw.headers);
+    let account;
+    try {
+      account = await getSessionUser(c.req.raw.headers);
+    } catch (error) {
+      if (error instanceof DatabaseUnavailableError) {
+        const mapped = publicApiError(error);
+        console.error(mapped.log);
+        return c.json(mapped.body, mapped.status);
+      }
+      throw error;
+    }
     if (account && (account as { banned?: boolean | null }).banned) {
       return c.json({ error: accessDeniedMessage() }, 403);
     }
@@ -114,7 +130,21 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
   registerMailRoutes(app);
 
   app.all("/api/auth/*", async (c) => {
-    const response = await auth.handler(c.req.raw);
+    const outcome = await captureDatabaseFailures(async () => {
+      const response = await auth.handler(c.req.raw);
+      return { response, failure: peekDatabaseFailure() };
+    });
+    let response = outcome.response;
+    if (outcome.failure && response.status >= 500) {
+      console.error(
+        `[auth] infrastructure failure kind=${outcome.failure.kind} response=database_unavailable`,
+      );
+      c.header("Cache-Control", "no-store");
+      response = c.json(
+        { error: "Database is temporarily unavailable.", code: "database_unavailable" },
+        503,
+      );
+    }
     try {
       await recordAuthHandlerAudit({
         db,
@@ -124,7 +154,7 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
         headers: c.req.raw.headers,
       });
     } catch (error) {
-      console.error("[auth-audit]", error instanceof Error ? error.message : "audit failed");
+      console.error("[auth-audit]", safeErrorLabel(error));
     }
     return response;
   });
@@ -132,8 +162,9 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
   app.notFound((c) => c.json({ error: "Not found" }, 404));
 
   app.onError((error, c) => {
-    console.error("[api]", safeErrorLabel(error));
-    return c.json({ error: "Internal server error" }, 500);
+    const mapped = publicApiError(error);
+    console.error(mapped.log);
+    return c.json(mapped.body, mapped.status);
   });
 
   const seedAccess = options.seedAccess ?? !process.env.VERCEL;
