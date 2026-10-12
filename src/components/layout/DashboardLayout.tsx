@@ -6,11 +6,11 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 export function DashboardLayout() {
   return (
-    <SidebarProvider>
+    <SidebarProvider className="app-workspace">
       <AppSidebar />
-      <SidebarInset className="min-w-0">
+      <SidebarInset className="min-w-0 bg-background">
         <DashboardHeader />
-        <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-0 pb-[max(1rem,env(safe-area-inset-bottom))] md:gap-6 md:px-6 md:pb-6">
+        <div className="workspace-page-main flex min-w-0 flex-1 flex-col">
           <Outlet />
         </div>
       </SidebarInset>

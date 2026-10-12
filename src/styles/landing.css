@@ -5,10 +5,10 @@
   --ink-soft: #2a3344;
   --muted: #5b6578;
   --muted-soft: #7a8498;
-  --canvas: #e8ecef;
-  --surface: rgba(255, 255, 255, 0.72);
-  --line: rgba(20, 24, 33, 0.12);
-  --accent: #0f7a72;
+  --canvas: #f4f5f7;
+  --surface: #ffffff;
+  --line: #e2e5ea;
+  --accent: #0d6e68;
   --accent-strong: #0a5f59;
   --accent-warm: #c45c26;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;

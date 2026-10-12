@@ -138,14 +138,19 @@ export function UsersPage() {
   return (
     <>
       <PageMeta title="Users | Kivorenta" description="Manage accounts, access, and permissions." canonicalPath="/app/admin/users/" />
-      <AppPageContainer className="max-w-[90rem]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader title="Users" description="Manage accounts, access, and permissions." />
-          <div className="flex flex-wrap gap-2">
-            <Button asChild><Link to="/app/admin/users/new/">Create user</Link></Button>
-            <Button type="button" variant="outline" onClick={() => setShowInvite((current) => !current)}>Invite user</Button>
-          </div>
-        </div>
+      <AppPageContainer width="wide">
+        <PageHeader
+          title="Users"
+          description="Manage accounts, access, and permissions."
+          actions={
+            <>
+              <Button asChild><Link to="/app/admin/users/new/">Create user</Link></Button>
+              <Button type="button" variant="outline" onClick={() => setShowInvite((current) => !current)}>
+                Invite user
+              </Button>
+            </>
+          }
+        />
         <div className="grid gap-3 sm:grid-cols-4">
           {[
             ["Total", stats.total],

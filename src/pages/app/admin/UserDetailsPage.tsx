@@ -176,7 +176,7 @@ export function UserDetailsPage() {
   return (
     <>
       <PageMeta title={`${account.name} | Kivorenta`} description="User account details." canonicalPath={`/app/admin/users/${account.id}/`} />
-      <AppPageContainer className="max-w-[90rem]">
+      <AppPageContainer width="wide">
         <PageHeader
           title={account.name}
           description={account.email}
@@ -185,7 +185,7 @@ export function UserDetailsPage() {
         {created ? <p className="text-sm" role="status">User created successfully.</p> : null}
         {error && !verifyOpen ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm" role="status">{message}</p> : null}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
             <CardContent className="space-y-3">

@@ -120,17 +120,19 @@ export function ContactListDetailsPage() {
         <PageHeader
           title={list?.name ?? "List"}
           description={list?.description || "Contacts in this list."}
+          actions={
+            <>
+              <Button variant="outline" asChild><Link to="/app/recipients/lists/">Back to lists</Link></Button>
+              <Button onClick={openAddContacts}>Add contacts</Button>
+              {selectedIds.size > 0 ? (
+                <Button variant="destructive" onClick={() => void removeSelected()}>Remove selected</Button>
+              ) : null}
+            </>
+          }
         />
         <RecipientsNav />
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild><Link to="/app/recipients/lists/">Back to lists</Link></Button>
-          <Button onClick={openAddContacts}>Add contacts</Button>
-          {selectedIds.size > 0 ? (
-            <Button variant="destructive" onClick={() => void removeSelected()}>Remove selected</Button>
-          ) : null}
-        </div>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-0 sm:p-0">
             {loading ? <Skeleton className="h-40 w-full" /> : (
               <ContactsTable
                 contacts={contacts}

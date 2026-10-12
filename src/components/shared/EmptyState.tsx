@@ -20,13 +20,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center",
+        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center",
         className,
       )}
     >
       {Icon ? (
         <div
-          className="mb-4 flex size-11 items-center justify-center rounded-lg bg-background text-muted-foreground shadow-sm"
+          className="mb-4 flex size-11 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs"
           aria-hidden={true}
         >
           <Icon className="size-5 stroke-[1.75]" />

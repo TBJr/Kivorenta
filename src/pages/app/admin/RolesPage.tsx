@@ -40,7 +40,7 @@ export function RolesPage() {
   return (
     <>
       <PageMeta title="Roles | Kivorenta" description="Manage roles and permissions." canonicalPath="/app/admin/roles/" />
-      <AppPageContainer className="max-w-[90rem]">
+      <AppPageContainer width="wide">
         <PageHeader
           title="Roles"
           description="System roles are protected. Custom roles can be created from a copy of the permission list."

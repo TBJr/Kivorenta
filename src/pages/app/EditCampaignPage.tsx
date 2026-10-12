@@ -52,7 +52,7 @@ export function EditCampaignPage() {
       />
       <AppPageContainer>
         <PageHeader
-          className="mb-4"
+          density="compact"
           title="Edit campaign"
           description="Update draft campaign settings and targeting."
           actions={<Button asChild variant="outline"><Link to={`/app/campaigns/${campaignId}/`}>View details</Link></Button>}

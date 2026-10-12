@@ -62,10 +62,11 @@ export function ContactListsPage() {
     <>
       <PageMeta title="Contact lists | Kivorenta" description="Contact lists." canonicalPath="/app/recipients/lists/" />
       <AppPageContainer>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader title="Contact lists" description="Organize contacts into reusable lists." />
-          <Button onClick={() => setDialogOpen(true)}><Plus /> Create list</Button>
-        </div>
+        <PageHeader
+          title="Contact lists"
+          description="Organize contacts into reusable lists."
+          actions={<Button onClick={() => setDialogOpen(true)}><Plus /> Create list</Button>}
+        />
         <RecipientsNav />
         {loading ? (
           <Skeleton className="h-40 w-full" />

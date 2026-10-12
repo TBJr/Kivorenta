@@ -22,8 +22,8 @@ export function MessageList({
   const base = mode === "sent" ? "/app/sent" : "/app/inbox";
 
   return (
-    <div className="w-full min-w-0 overflow-hidden rounded-xl border bg-card">
-      <div className="hidden border-b px-4 py-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_9rem] sm:gap-3">
+    <div className="workspace-panel w-full min-w-0">
+      <div className="workspace-panel-header hidden sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_9rem] sm:gap-3">
         <span>{addressLabel}</span>
         <span>Subject</span>
         <span className="text-right">Date</span>
@@ -37,8 +37,8 @@ export function MessageList({
               <Link
                 to={href}
                 className={cn(
-                  "grid min-w-0 gap-1 px-4 py-3 hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_9rem] sm:items-start sm:gap-3",
-                  !message.seen && "bg-muted/30",
+                  "grid min-w-0 gap-1 px-4 py-3 transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_9rem] sm:items-start sm:gap-3",
+                  !message.seen && "bg-accent/30",
                 )}
               >
                 <span className="flex min-w-0 items-center gap-2 text-sm">

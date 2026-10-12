@@ -44,18 +44,18 @@ export function DraftsPage() {
         canonicalPath="/app/drafts/"
       />
       <AppPageContainer>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader
-            title="Drafts"
-            description="Manage your saved email drafts."
-          />
-          <Button asChild>
-            <Link to="/app/compose/">
-              <Plus />
-              New draft
-            </Link>
-          </Button>
-        </div>
+        <PageHeader
+          title="Drafts"
+          description="Manage your saved email drafts."
+          actions={
+            <Button asChild>
+              <Link to="/app/compose/">
+                <Plus />
+                New draft
+              </Link>
+            </Button>
+          }
+        />
 
         {loading ? (
           <div className="space-y-3">

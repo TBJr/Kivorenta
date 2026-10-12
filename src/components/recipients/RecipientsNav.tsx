@@ -15,7 +15,7 @@ export function RecipientsNav() {
   const current = normalizeAppPath(pathname);
 
   return (
-    <nav className="flex flex-wrap gap-2 border-b border-border pb-3" aria-label="Recipients">
+    <nav className="workspace-subnav" aria-label="Recipients">
       {links.map((link) => {
         const active =
           current === link.href ||

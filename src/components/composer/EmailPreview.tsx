@@ -85,7 +85,7 @@ export function EmailPreview({
             sandbox=""
             srcDoc={srcDoc}
             className={cn(
-              "h-[min(50dvh,520px)] w-full max-w-full rounded-md border border-border bg-white shadow-sm",
+              "h-[min(50dvh,520px)] w-full max-w-full rounded-md border border-border bg-card shadow-xs",
               mode === "mobile" ? "max-w-[390px]" : "max-w-3xl",
             )}
           />

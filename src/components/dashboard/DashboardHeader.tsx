@@ -19,8 +19,8 @@ export function DashboardHeader() {
   const pageTitle = current?.title ?? APP_NAME;
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/60 md:h-16">
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 md:px-4">
+    <header className="workspace-topbar sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background/90 backdrop-blur-sm supports-[backdrop-filter]:bg-background/75">
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-4 lg:px-6">
         <SidebarTrigger className="size-11 shrink-0 md:size-8" />
         <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
         <Breadcrumb className="min-w-0">

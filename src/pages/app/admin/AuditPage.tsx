@@ -43,7 +43,7 @@ export function AuditPage() {
   return (
     <>
       <PageMeta title="Audit log | Kivorenta" description="Administrative actions." canonicalPath="/app/admin/audit/" />
-      <AppPageContainer className="max-w-[90rem]">
+      <AppPageContainer width="wide">
         <PageHeader title="Audit log" description="Sensitive account and role changes recorded by Kivorenta." />
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <div className="grid gap-1">

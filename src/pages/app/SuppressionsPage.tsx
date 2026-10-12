@@ -60,17 +60,18 @@ export function SuppressionsPage() {
     <>
       <PageMeta title="Suppressions | Kivorenta" description="Suppression list." canonicalPath="/app/recipients/suppressions/" />
       <AppPageContainer>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader title="Suppressions" description="Emails blocked from future marketing sends." />
-          <Button onClick={() => setDialogOpen(true)}>Add suppression</Button>
-        </div>
+        <PageHeader
+          title="Suppressions"
+          description="Emails blocked from future marketing sends."
+          actions={<Button onClick={() => setDialogOpen(true)}>Add suppression</Button>}
+        />
         <RecipientsNav />
         <div className="max-w-md space-y-1.5">
           <Label htmlFor="sup-search">Search email</Label>
           <Input id="sup-search" value={q} onChange={(e) => { setLoading(true); setQ(e.target.value); }} placeholder="name@example.com" />
         </div>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="py-5">
             {loading ? <Skeleton className="h-40 w-full" /> : items.length === 0 ? (
               <EmptyState title="No suppressions" description="Manual blocks and unsubscribe events appear here." />
             ) : (

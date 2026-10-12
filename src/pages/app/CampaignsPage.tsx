@@ -135,18 +135,18 @@ export function CampaignsPage() {
         canonicalPath="/app/campaigns/"
       />
       <AppPageContainer>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader
-            title="Campaigns"
-            description="Create, organize, and prepare email campaigns."
-          />
-          <Button asChild>
-            <Link to="/app/campaigns/new/">
-              <Plus />
-              Create campaign
-            </Link>
-          </Button>
-        </div>
+        <PageHeader
+          title="Campaigns"
+          description="Create, organize, and prepare email campaigns."
+          actions={
+            <Button asChild>
+              <Link to="/app/campaigns/new/">
+                <Plus />
+                Create campaign
+              </Link>
+            </Button>
+          }
+        />
 
         {stats && <CampaignStats stats={stats} />}
 

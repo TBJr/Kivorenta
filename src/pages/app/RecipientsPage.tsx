@@ -174,26 +174,29 @@ export function RecipientsPage() {
     <>
       <PageMeta title="Recipients | Kivorenta" description="Manage contacts and lists." canonicalPath="/app/recipients/" />
       <AppPageContainer>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <PageHeader title="Recipients" description="Manage your contacts and recipient lists." />
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-              <Plus /> Add contact
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/app/recipients/import/"><Upload /> Import CSV</Link>
-            </Button>
-            <Button variant="outline" onClick={() => setListDialogOpen(true)}>
-              <ListPlus /> Create list
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="Recipients"
+          description="Manage your contacts and recipient lists."
+          actions={
+            <>
+              <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+                <Plus /> Add contact
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/app/recipients/import/"><Upload /> Import CSV</Link>
+              </Button>
+              <Button variant="outline" onClick={() => setListDialogOpen(true)}>
+                <ListPlus /> Create list
+              </Button>
+            </>
+          }
+        />
 
         <RecipientsNav />
         <ContactStats stats={stats} loading={loading && !stats} />
 
         <Card>
-          <CardContent className="space-y-4 pt-6">
+          <CardContent className="space-y-4 py-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
               <div className="flex-1 space-y-1.5">
                 <Label htmlFor="contact-search">Search</Label>

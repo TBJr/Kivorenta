@@ -30,7 +30,7 @@ export function CreateCampaignPage() {
       />
       <AppPageContainer>
         <PageHeader
-          className="mb-4"
+          density="compact"
           title="Create campaign"
           description="Follow the steps to prepare a new email campaign."
           actions={<Button asChild variant="outline"><Link to="/app/campaigns/">Back to campaigns</Link></Button>}

@@ -38,6 +38,7 @@ function ComposePageContent({ draftId }: { draftId?: string }) {
       />
       <AppPageContainer>
         <PageHeader
+          density="compact"
           title="Compose email"
           description="Create, edit, and save email drafts."
           notice="Drafts are saved to your account. Campaign queues stay simulation-only. Individual test delivery is limited to Settings."

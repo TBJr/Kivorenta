@@ -68,15 +68,14 @@ export function QueuePage() {
         <PageHeader
           title="Queue"
           description="Monitor and manage campaign simulation processing. No emails are sent."
+          notice={
+            overview
+              ? `Queue ${overview.queueEnabled ? "enabled" : "disabled"} · Simulation-only mode`
+              : undefined
+          }
         />
 
-        {overview && (
-          <p className="text-xs text-muted-foreground">
-            Queue {overview.queueEnabled ? "enabled" : "disabled"} · Simulation-only mode
-          </p>
-        )}
-
-        {overview && <QueueStats stats={overview.stats} />}
+        {overview ? <QueueStats stats={overview.stats} /> : null}
 
         <div className="flex flex-wrap gap-2">
           <select

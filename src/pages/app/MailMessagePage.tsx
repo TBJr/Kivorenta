@@ -57,7 +57,7 @@ export function MailMessagePage() {
         description="Read a mailbox message."
         canonicalPath={pathname}
       />
-      <AppPageContainer className="max-w-[90rem]">
+      <AppPageContainer width="wide">
         <PageHeader
           title={message?.subject ?? "Message"}
           actions={<Button variant="outline" asChild><Link to={back}>Back</Link></Button>}
@@ -106,7 +106,7 @@ export function MailMessagePage() {
                     sandbox="allow-popups allow-popups-to-escape-sandbox"
                     referrerPolicy="no-referrer"
                     srcDoc={mailMessageSrcDoc(message.html)}
-                    className="min-h-64 w-full max-w-full rounded-md border border-border bg-white"
+                    className="min-h-64 w-full max-w-full rounded-md border border-border bg-card"
                   />
                 </div>
               ) : (

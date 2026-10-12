@@ -99,44 +99,38 @@ export function CampaignDetailsPage() {
         canonicalPath={`/app/campaigns/${campaignId}/`}
       />
       <AppPageContainer>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <PageHeader
-              title={campaign?.name || "Untitled campaign"}
-              description={campaign?.description || "Campaign details and preparation history."}
-            />
-            {campaign && (
-              <div className="mt-2">
-                <CampaignStatusBadge status={campaign.status} />
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link to="/app/campaigns/">All campaigns</Link>
-            </Button>
-            {campaign?.status === "draft" && (
-              <Button asChild>
-                <Link to={`/app/campaigns/${campaign.id}/edit/`}>Edit</Link>
+        <PageHeader
+          title={campaign?.name || "Untitled campaign"}
+          description={campaign?.description || "Campaign details and preparation history."}
+          meta={campaign ? <CampaignStatusBadge status={campaign.status} /> : null}
+          actions={
+            <>
+              <Button asChild variant="outline">
+                <Link to="/app/campaigns/">All campaigns</Link>
               </Button>
-            )}
-            {campaign && ["ready", "scheduled"].includes(campaign.status) && (
-              <Button variant="outline" disabled={busy} onClick={revertToDraft}>
-                Revert to draft
-              </Button>
-            )}
-            {campaign && (
-              <Button variant="outline" disabled={busy} onClick={handleDuplicate}>
-                Duplicate
-              </Button>
-            )}
-          </div>
-        </div>
+              {campaign?.status === "draft" && (
+                <Button asChild>
+                  <Link to={`/app/campaigns/${campaign.id}/edit/`}>Edit</Link>
+                </Button>
+              )}
+              {campaign && ["ready", "scheduled"].includes(campaign.status) && (
+                <Button variant="outline" disabled={busy} onClick={revertToDraft}>
+                  Revert to draft
+                </Button>
+              )}
+              {campaign && (
+                <Button variant="outline" disabled={busy} onClick={handleDuplicate}>
+                  Duplicate
+                </Button>
+              )}
+            </>
+          }
+        />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {campaign && (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Email content</CardTitle>

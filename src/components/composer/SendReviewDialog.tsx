@@ -62,7 +62,7 @@ export function SendReviewDialog({
         <iframe
           title="Message preview"
           sandbox=""
-          className="h-64 w-full rounded-md border border-border bg-white"
+          className="h-64 w-full rounded-md border border-border bg-card"
           srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${EMAIL_BODY_PREVIEW_CSS}</style></head><body>${bodyHtml || "<p></p>"}</body></html>`}
         />
         <DialogFooter className="gap-2">
