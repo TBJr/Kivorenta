@@ -30,8 +30,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/app/change-password/" replace />;
   }
 
-  if (gate.twoFactorEnforcementRequired && !pathname.startsWith("/app/settings/security")) {
-    return <Navigate to="/app/settings/security/" replace />;
+  if (
+    gate.twoFactorEnforcementRequired &&
+    !pathname.startsWith("/app/settings/security") &&
+    !pathname.startsWith("/app/settings/profile")
+  ) {
+    return <Navigate to="/app/settings/profile/" replace />;
   }
 
   return children;

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { auth } from "../auth/auth.js";
 import { parseRoleKeys } from "../auth/permissions.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { createDb } from "../db/index.js";
 import { user } from "../db/schema.js";
 import { loadEnv } from "../env.js";
@@ -13,6 +14,7 @@ import { validatePassword } from "../lib/password-policy.js";
 import { clientIpFromRequest, userAgentFromRequest } from "../lib/request-context.js";
 import { getSessionUser } from "../lib/session.js";
 import { recordAudit } from "../services/audit-log.js";
+import { selfProfileAuditMetadata, updateAccountProfileSchema } from "../validation/account-profile.js";
 
 const env = loadEnv();
 const { db } = createDb(env);
@@ -28,7 +30,60 @@ function json(c: Context, body: unknown, status: 200 | 400 | 401 | 403 | 500 = 2
   return c.json(body, status);
 }
 
+function profileFromAccount(account: {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  image?: string | null;
+}) {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    emailVerified: Boolean(account.emailVerified),
+    image: account.image ?? null,
+  };
+}
+
 export function registerAccountRoutes(app: Hono) {
+  app.get("/api/account/profile", async (c) => {
+    const account = await getSessionUser(c.req.raw.headers);
+    if (!account) return json(c, { error: "Unauthorized" }, 401);
+    return json(c, { profile: profileFromAccount(account) });
+  });
+
+  app.patch("/api/account/profile", async (c) => {
+    const account = await getSessionUser(c.req.raw.headers);
+    if (!account) return json(c, { error: "Unauthorized" }, 401);
+
+    const parsed = updateAccountProfileSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return json(c, validationError(parsed.error), 400);
+
+    const name = parsed.data.name;
+    if (name !== account.name) {
+      await db.update(user).set({ name, updatedAt: new Date() }).where(eq(user.id, account.id));
+      await recordAudit(db, {
+        actorUserId: account.id,
+        targetUserId: account.id,
+        action: AUDIT_ACTIONS.userUpdated,
+        metadata: selfProfileAuditMetadata(["name"]),
+        ipAddress: clientIpFromRequest(c),
+        userAgent: userAgentFromRequest(c),
+      });
+    }
+
+    return json(c, {
+      profile: profileFromAccount({
+        id: account.id,
+        name,
+        email: account.email,
+        emailVerified: account.emailVerified,
+        image: account.image ?? null,
+      }),
+    });
+  });
+
   app.get("/api/account/security", async (c) => {
     const account = await getSessionUser(c.req.raw.headers);
     if (!account) return json(c, { error: "Unauthorized" }, 401);

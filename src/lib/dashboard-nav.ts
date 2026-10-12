@@ -11,6 +11,7 @@ import {
   Settings,
   Shield,
   SquarePen,
+  UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -66,8 +67,9 @@ export const dashboardNavGroups: DashboardNavGroup[] = [
     items: [
       { title: "Queue", url: "/app/queue/", icon: ListOrdered },
       { title: "History", url: "/app/history/", icon: History },
-      { title: "Settings", url: "/app/settings/", icon: Settings },
+      { title: "Profile", url: "/app/settings/profile/", icon: UserRound },
       { title: "Security", url: "/app/settings/security/", icon: Shield },
+      { title: "Mailbox", url: "/app/settings/", icon: Settings },
     ],
   },
   {

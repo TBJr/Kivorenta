@@ -29,6 +29,7 @@ import { UserDetailsPage } from "@/pages/app/admin/UserDetailsPage";
 import { CreateUserPage } from "@/pages/app/admin/CreateUserPage";
 import { UsersPage } from "@/pages/app/admin/UsersPage";
 import { ChangePasswordPage } from "@/pages/app/ChangePasswordPage";
+import { ProfileSettingsPage } from "@/pages/app/ProfileSettingsPage";
 import { SecuritySettingsPage } from "@/pages/app/SecuritySettingsPage";
 import { SettingsPage } from "@/pages/app/SettingsPage";
 import { LoginTwoFactorPage } from "@/pages/LoginTwoFactorPage";
@@ -152,6 +153,7 @@ export const appRoutes = [
       { path: "queue/jobs/:jobId/", element: <QueueJobDetailsPage /> },
       { path: "history/", element: <HistoryPage /> },
       { path: "settings/", element: <SettingsPage /> },
+      { path: "settings/profile/", element: <ProfileSettingsPage /> },
       { path: "settings/security/", element: <SecuritySettingsPage /> },
       { path: "change-password/", element: <ChangePasswordPage /> },
       { path: "admin/audit-logs/", element: <AuditPage /> },

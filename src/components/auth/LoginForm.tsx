@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { mapAuthErrorMessage, validateEmail, validatePassword } from "@/lib/auth-validation";
+import { shouldRedirectToTwoFactor, twoFactorLoginPath } from "@/lib/two-factor-redirect";
 
 type LoginFormProps = React.ComponentProps<"div">;
 
@@ -59,7 +60,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     setIsSubmitting(true);
     const redirectTo = safeRedirectPath(searchParams.get("redirect"));
 
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: email.trim(),
       password,
       callbackURL: redirectTo,
@@ -75,6 +76,11 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
       } else {
         setFormError(mapAuthErrorMessage(error.message ?? "Sign in failed."));
       }
+      return;
+    }
+
+    if (shouldRedirectToTwoFactor(data)) {
+      navigate(twoFactorLoginPath(redirectTo), { replace: true });
       return;
     }
 

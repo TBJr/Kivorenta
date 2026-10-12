@@ -3,11 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   isApiPathAllowedDuringPasswordChange,
   isApiPathAllowedDuringTwoFactorSetup,
+  isAppPathAllowedDuringTwoFactorSetup,
   loadAccountSecurityState,
 } from "../lib/account-security.js";
 import { redactAuthEmailText } from "../lib/email.js";
 import { sanitizeAuditMetadata } from "../lib/security-audit.js";
 import { bootstrapPreflight } from "../services/bootstrap-admin.js";
+import { shouldRedirectToTwoFactor, twoFactorLoginPath } from "../../src/lib/two-factor-redirect.js";
 
 describe("account security gates", () => {
   it("allows password change endpoints during enforcement", () => {
@@ -17,10 +19,22 @@ describe("account security gates", () => {
     expect(isApiPathAllowedDuringPasswordChange("/api/auth/sign-out", "POST")).toBe(true);
   });
 
-  it("allows security settings during 2FA enforcement", () => {
+  it("allows security and profile settings during 2FA enforcement", () => {
     expect(isApiPathAllowedDuringTwoFactorSetup("/api/account/security", "GET")).toBe(true);
+    expect(isApiPathAllowedDuringTwoFactorSetup("/api/account/profile", "GET")).toBe(true);
+    expect(isApiPathAllowedDuringTwoFactorSetup("/api/account/profile", "PATCH")).toBe(true);
     expect(isApiPathAllowedDuringTwoFactorSetup("/api/auth/two-factor/enable", "POST")).toBe(true);
     expect(isApiPathAllowedDuringTwoFactorSetup("/api/mail/inbox", "GET")).toBe(false);
+    expect(isAppPathAllowedDuringTwoFactorSetup("/app/settings/security/")).toBe(true);
+    expect(isAppPathAllowedDuringTwoFactorSetup("/app/settings/profile/")).toBe(true);
+    expect(isAppPathAllowedDuringTwoFactorSetup("/app/campaigns/")).toBe(false);
+  });
+
+  it("routes sign-in to the two-factor page when Better Auth requests it", () => {
+    expect(shouldRedirectToTwoFactor({ twoFactorRedirect: true })).toBe(true);
+    expect(shouldRedirectToTwoFactor({ user: { id: "1" } })).toBe(false);
+    expect(shouldRedirectToTwoFactor(null)).toBe(false);
+    expect(twoFactorLoginPath("/app/inbox/")).toBe("/login/two-factor/?redirect=%2Fapp%2Finbox%2F");
   });
 });
 

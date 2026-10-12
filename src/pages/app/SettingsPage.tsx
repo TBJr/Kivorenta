@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RichTextEditor } from "@/components/composer/RichTextEditor";
 import { PageMeta } from "@/components/layout/PageMeta";
 import { useAppNotice } from "@/components/notices/AppNotice";
+import { SettingsSectionNav } from "@/components/settings/SettingsSectionNav";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
@@ -240,16 +241,17 @@ export function SettingsPage() {
   return (
     <>
       <PageMeta
-        title="Settings | Kivorenta"
+        title="Mailbox | Kivorenta"
         description="Email account connection and a controlled test message."
         canonicalPath="/app/settings/"
       />
       <AppPageContainer>
         <PageHeader
-          title="Settings"
+          title="Mailbox"
           description="Email account connection and one controlled test message."
           notice="Campaign queues stay simulation-only. This page does not send campaigns."
         />
+        <SettingsSectionNav />
 
         {loading ? (
           <div className="space-y-3">

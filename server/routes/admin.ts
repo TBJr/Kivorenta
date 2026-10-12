@@ -364,6 +364,7 @@ export function registerAdminRoutes(app: Hono) {
         name: account.name,
         email: account.email,
         emailVerified: account.emailVerified,
+        image: (account as { image?: string | null }).image ?? null,
         role: (account as { role?: string }).role ?? "user",
         banned: Boolean((account as { banned?: boolean }).banned),
         mustChangePassword: security?.mustChangePassword ?? false,

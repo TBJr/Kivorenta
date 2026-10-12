@@ -203,7 +203,7 @@ describe("mailbox safety", () => {
       group.items.map((item) => item.title),
     );
     expect(adminTitles).toEqual(
-      expect.arrayContaining(["Compose", "Inbox", "Sent", "Drafts", "Campaigns", "Queue", "Settings"]),
+      expect.arrayContaining(["Compose", "Inbox", "Sent", "Drafts", "Campaigns", "Queue", "Profile", "Mailbox"]),
     );
     expect(userTitles).not.toContain("Inbox");
     expect(userTitles).not.toContain("Sent");
