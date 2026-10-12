@@ -106,11 +106,16 @@ export function AuditPage() {
       .then(async ([listRes, summaryRes]) => {
         const listBody = await listRes.json();
         const summaryBody = await summaryRes.json();
-        if (!listRes.ok) throw new Error(listBody.error ?? "Could not load the audit log.");
-        if (!summaryRes.ok) throw new Error(summaryBody.error ?? "Could not load audit summary.");
+        if (!listRes.ok) {
+          throw new Error(listBody.error ?? "Could not load the audit log.");
+        }
         setEvents(listBody.events ?? []);
         setPagination(listBody.pagination ?? { page: 1, limit: 25, total: 0, totalPages: 1 });
-        setSummary(summaryBody);
+        if (summaryRes.ok) {
+          setSummary(summaryBody);
+        } else {
+          setSummary(null);
+        }
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Could not load the audit log.");

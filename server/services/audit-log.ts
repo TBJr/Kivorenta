@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -225,6 +225,9 @@ export async function getAuditSummary(db: Database) {
         or(
           eq(adminAuditEvents.category, "USER_MANAGEMENT"),
           eq(adminAuditEvents.category, "ROLE_MANAGEMENT"),
+          ilike(adminAuditEvents.action, "user%"),
+          ilike(adminAuditEvents.action, "invitation%"),
+          ilike(adminAuditEvents.action, "role_%"),
         ),
       ),
     );
@@ -234,7 +237,13 @@ export async function getAuditSummary(db: Database) {
     .where(
       and(
         gte(adminAuditEvents.createdAt, since),
-        or(eq(adminAuditEvents.category, "SECURITY"), eq(adminAuditEvents.category, "AUTHENTICATION")),
+        or(
+          eq(adminAuditEvents.category, "SECURITY"),
+          eq(adminAuditEvents.category, "AUTHENTICATION"),
+          ilike(adminAuditEvents.action, "password%"),
+          ilike(adminAuditEvents.action, "auth_%"),
+          ilike(adminAuditEvents.action, "two_factor%"),
+        ),
       ),
     );
 
@@ -260,7 +269,7 @@ export async function enrichAuditActors(
   const rows = await db
     .select({ id: user.id, name: user.name, email: user.email })
     .from(user)
-    .where(or(...[...ids].map((id) => eq(user.id, id))));
+    .where(inArray(user.id, [...ids]));
   const map = new Map(rows.map((row) => [row.id, row]));
   return events.map((event) => ({
     ...event,

@@ -269,7 +269,19 @@ export function registerAdminRoutes(app: Hono) {
   app.get("/api/admin/audit/summary", async (c) => {
     const access = await requirePermission(c, "audit.read");
     if ("response" in access) return access.response;
-    return json(c, await getAuditSummary(db));
+    try {
+      return json(c, await getAuditSummary(db));
+    } catch (error) {
+      console.error("[audit] summary failed", error);
+      return json(
+        c,
+        {
+          error:
+            "Audit summary is unavailable. Apply pending database migrations (npm run db:migrate), including 0009_audit_log_phase_7_7.",
+        },
+        502,
+      );
+    }
   });
 
   app.get("/api/admin/audit/:eventId", async (c) => {
@@ -299,9 +311,21 @@ export function registerAdminRoutes(app: Hono) {
       to: c.req.query("to"),
     });
     if (!parsed.success) return json(c, validationError(parsed.error), 400);
-    const listed = await listAuditEvents(db, parsed.data);
-    const events = await enrichAuditActors(db, listed.events);
-    return json(c, { ...listed, events });
+    try {
+      const listed = await listAuditEvents(db, parsed.data);
+      const events = await enrichAuditActors(db, listed.events);
+      return json(c, { ...listed, events });
+    } catch (error) {
+      console.error("[audit] list failed", error);
+      return json(
+        c,
+        {
+          error:
+            "Audit log is unavailable. Apply pending database migrations (npm run db:migrate), including 0009_audit_log_phase_7_7.",
+        },
+        502,
+      );
+    }
   });
 
   app.post("/api/invitations/accept", async (c) => {
