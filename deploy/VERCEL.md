@@ -50,7 +50,7 @@ Use repository defaults from `vercel.json`:
 
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
-- **Install command:** `npm install`
+- **Install command:** `npm install --include=dev` (required so `typescript`, `vite`, and other build tools in `devDependencies` are installed when `NODE_ENV=production`)
 
 ## Post-deploy checks
 

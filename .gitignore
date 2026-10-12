@@ -13,6 +13,7 @@ dist-server/
 .env.production.local
 .env.*
 !.env.example
+!.env.production.example
 .env.backup*
 
 # Logs and OS
