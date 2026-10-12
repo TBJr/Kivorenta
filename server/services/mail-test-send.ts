@@ -3,7 +3,8 @@ import { loadMailConfig } from "../mail/configuration.js";
 import { isAuthorizedTestRecipient } from "../mail/test-recipients.js";
 import { normalizeEmail } from "../lib/email-normalization.js";
 import { MailboxError, safeErrorDetails } from "../mail/errors.js";
-import { plainTextToSafeHtml, sanitizeInboundHtml } from "../mail/html.js";
+import { finalizeTestMessageHtml } from "../lib/email-content.js";
+import { plainTextToSafeHtml } from "../mail/html.js";
 import { performIdempotentSend } from "../mail/idempotency.js";
 import { saveSentCopy } from "../mail/imap.js";
 import { withPgAdvisoryLock, type MailLock } from "../mail/lock.js";
@@ -40,7 +41,7 @@ function prepareHtml(input: TestSendInput) {
   if (!input.html?.trim()) {
     return plainTextToSafeHtml(input.text);
   }
-  const safe = sanitizeInboundHtml(input.html);
+  const safe = finalizeTestMessageHtml(input.html);
   if (!safe) {
     throw new MailboxError(
       "The HTML version of this message is empty after sanitizing.",

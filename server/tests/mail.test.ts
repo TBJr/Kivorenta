@@ -7,7 +7,7 @@ import {
   toPublicAccount,
 } from "../mail/configuration.js";
 import { friendlyMailError, redactSecrets } from "../mail/errors.js";
-import { sanitizeInboundHtml } from "../mail/html.js";
+import { plainTextToSafeHtml, sanitizeInboundHtml } from "../mail/html.js";
 import { messagePageRange } from "../mail/pagination.js";
 import { assessTestSendRateLimit } from "../mail/rate-limit.js";
 import { findSentMailbox } from "../mail/sent-folder.js";
@@ -91,6 +91,52 @@ describe("mailbox safety", () => {
     const friendly = friendlyMailError(error, "smtp");
     expect(friendly).toMatch(/credentials/i);
     expect(friendly).not.toContain(SECRET);
+  });
+
+  it("linkifies safe URLs in plain-text test messages without allowing HTML injection", () => {
+    const single = plainTextToSafeHtml("Visit https://example.com today.");
+    expect(single).toContain('<a href="https://example.com"');
+    expect(single).toContain("https://example.com</a> today.");
+    expect(single).not.toContain("javascript:");
+
+    const http = plainTextToSafeHtml("http://example.com");
+    expect(http).toContain('href="http://example.com"');
+
+    const query = plainTextToSafeHtml("https://example.com/path?x=1&y=2");
+    expect(query).toContain('href="https://example.com/path?x=1&amp;y=2"');
+    expect(query).toContain("https://example.com/path?x=1&amp;y=2</a>");
+
+    const punct = plainTextToSafeHtml("See https://example.com).");
+    expect(punct).toContain("https://example.com</a>).");
+
+    const multi = plainTextToSafeHtml("https://a.example and https://b.example/end");
+    expect(multi.match(/<a href="/g)?.length).toBe(2);
+
+    const paragraphs = plainTextToSafeHtml("Line one https://example.com\n\nSecond https://example.org");
+    expect(paragraphs).toContain("<p>Line one <a");
+    expect(paragraphs).toContain("<p>Second <a");
+
+    const escaped = plainTextToSafeHtml('<script>alert(1)</script><a href="javascript:alert(1)">bad</a>');
+    expect(escaped).not.toContain("<script");
+    expect(escaped).toContain("&lt;script&gt;");
+    expect(escaped).not.toMatch(/<a\s+href="javascript:/i);
+    expect(escaped).toContain('&lt;a href="javascript:alert(1)"&gt;');
+
+    const unsupportedProtocol = plainTextToSafeHtml("Legacy ftp://example.com/file");
+    expect(unsupportedProtocol).not.toContain('<a href="ftp:');
+
+    const incomplete = plainTextToSafeHtml("broken link: https://");
+    expect(incomplete).not.toContain("<a href=");
+
+    const quoted = plainTextToSafeHtml('Say "https://example.com" loudly');
+    expect(quoted).toContain('<a href="https://example.com"');
+
+    const unicode = plainTextToSafeHtml("日本語 https://example.com テスト");
+    expect(unicode).toContain("日本語 <a");
+    expect(unicode).toContain("テスト");
+
+    const mailto = plainTextToSafeHtml("Contact mailto:user@example.com please");
+    expect(mailto).toContain('href="mailto:user@example.com"');
   });
 
   it("strips scripts, remote images, and unsafe links from message HTML", () => {

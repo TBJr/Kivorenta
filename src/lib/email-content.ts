@@ -1,9 +1,4 @@
-export const EMPTY_TIPTAP_DOC = {
-  type: "doc",
-  content: [{ type: "paragraph" }],
-} as const;
-
-export type TiptapDoc = Record<string, unknown>;
+export { EMPTY_TIPTAP_DOC, type TiptapDoc } from "@/lib/message-content";
 
 export function isValidSenderEmail(value: string) {
   if (!value.trim()) return true;

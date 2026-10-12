@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_TIPTAP_DOC,
+  finalizeTestMessageHtml,
   htmlToPlainText,
   processDraftContent,
   sanitizeEmailHtml,
   tiptapJsonToHtml,
+  tiptapJsonToPlainText,
   validateTiptapDocument,
 } from "../lib/email-content.js";
+import { renderEmailCtaButtonHtml, validateEmailCtaPayload } from "../lib/email-cta.js";
+import { isAllowedEmailLinkUrl, normalizeEmailLinkUrl } from "../lib/safe-email-url.js";
 
 describe("email content", () => {
   it("accepts a valid tiptap document", () => {
@@ -125,6 +129,75 @@ describe("email content", () => {
     expect(html).toContain("<ol");
     expect(html).toContain("Step one");
     expect(sanitizeEmailHtml(html)).toContain("<ol");
+  });
+
+  it("validates safe link urls and rejects unsafe protocols", () => {
+    expect(normalizeEmailLinkUrl("example.com")).toBe("https://example.com");
+    expect(isAllowedEmailLinkUrl("https://example.com/path?x=1")).toBe(true);
+    expect(isAllowedEmailLinkUrl("mailto:user@example.com")).toBe(true);
+    expect(normalizeEmailLinkUrl("javascript:alert(1)")).toBe("");
+    expect(normalizeEmailLinkUrl("data:text/html,test")).toBe("");
+  });
+
+  it("renders hyperlinks from tiptap link marks", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Register Now",
+              marks: [{ type: "link", attrs: { href: "https://example.com/register" } }],
+            },
+          ],
+        },
+      ],
+    };
+    const html = tiptapJsonToHtml(doc);
+    expect(html).toContain('href="https://example.com/register"');
+    expect(html).toContain("Register Now");
+    expect(tiptapJsonToPlainText(doc)).toBe("Register Now");
+  });
+
+  it("renders cta placeholders and expands them for test send html", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Hello," }],
+        },
+        {
+          type: "emailCtaButton",
+          attrs: {
+            label: "Complete Registration",
+            href: "https://example.com/register",
+            variant: "primary",
+          },
+        },
+      ],
+    };
+    const draft = processDraftContent(doc);
+    expect(draft.bodyHtml).toContain("<!--kivorenta-cta");
+    expect(draft.bodyHtml).not.toContain("<table");
+    expect(draft.bodyText).toContain("Complete Registration (https://example.com/register)");
+
+    const delivered = finalizeTestMessageHtml(draft.bodyHtml);
+    expect(delivered).toContain("<table");
+    expect(delivered).toContain('href="https://example.com/register"');
+    expect(delivered).toContain("Complete Registration");
+    expect(delivered).not.toContain("<!--kivorenta-cta");
+    expect(delivered).not.toContain("<script");
+  });
+
+  it("rejects invalid cta payloads", () => {
+    expect(validateEmailCtaPayload({ label: "", href: "https://example.com" })).toBeNull();
+    expect(validateEmailCtaPayload({ label: "Go", href: "javascript:alert(1)" })).toBeNull();
+    expect(renderEmailCtaButtonHtml({ label: "Go", href: "https://example.com", variant: "primary" })).toContain(
+      "bgcolor=\"#0d6e68\"",
+    );
   });
 
   it("sanitizes list html without removing structure", () => {

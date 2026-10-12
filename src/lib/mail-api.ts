@@ -169,6 +169,7 @@ export function listIndividualSends(page = 1, limit = 10) {
 export function sendMailTest(input: {
   subject: string;
   text: string;
+  html?: string;
   testRecipient: string;
   confirm: true;
   idempotencyKey: string;

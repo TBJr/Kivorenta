@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   AlertDialog,
@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/composer/RichTextEditor";
 import { PageMeta } from "@/components/layout/PageMeta";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -30,6 +30,7 @@ import {
   type MailStatus,
   type MailSubmission,
 } from "@/lib/mail-api";
+import { EMPTY_TIPTAP_DOC, processDraftContent, type TiptapDoc } from "@/lib/message-content";
 
 function formatWhen(value: string | null) {
   if (!value) return "Not tested yet";
@@ -66,7 +67,7 @@ export function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [subject, setSubject] = useState("");
-  const [text, setText] = useState("");
+  const [contentJson, setContentJson] = useState<TiptapDoc>({ ...EMPTY_TIPTAP_DOC });
   const [acknowledged, setAcknowledged] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
@@ -127,9 +128,11 @@ export function SettingsPage() {
     setSending(true);
     setSendError(null);
     try {
+      const message = processDraftContent(contentJson);
       const result = await sendMailTest({
         subject: subject.trim(),
-        text: text.trim(),
+        text: message.bodyText,
+        html: message.bodyHtml,
         testRecipient: selectedTestRecipient,
         confirm: true,
         idempotencyKey,
@@ -160,13 +163,14 @@ export function SettingsPage() {
   }
 
   const hasTestRecipients = Boolean(status?.configured && status.testRecipients.length > 0);
+  const messagePreview = useMemo(() => processDraftContent(contentJson), [contentJson]);
 
   const canSend =
     hasTestRecipients &&
     selectedTestRecipient.length > 0 &&
     acknowledged &&
     subject.trim().length > 0 &&
-    text.trim().length > 0 &&
+    messagePreview.bodyText.trim().length > 0 &&
     !sending;
 
   return (
@@ -291,13 +295,11 @@ export function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="test-body">Message</Label>
-                      <Textarea
-                        id="test-body"
-                        value={text}
-                        className="min-h-32"
-                        maxLength={20000}
-                        onChange={(event) => {
-                          setText(event.target.value);
+                      <RichTextEditor
+                        variant="compact"
+                        content={contentJson}
+                        onChange={(doc) => {
+                          setContentJson(doc);
                           setIdempotencyKey(null);
                         }}
                       />

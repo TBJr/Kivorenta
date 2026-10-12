@@ -4,6 +4,12 @@ import Link from "@tiptap/extension-link";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import sanitizeHtml from "sanitize-html";
 
+import {
+  emailCtaComment,
+  prepareTestSendHtml,
+  validateEmailCtaPayload,
+} from "./email-cta.js";
+
 export const EMPTY_TIPTAP_DOC = {
   type: "doc",
   content: [{ type: "paragraph" }],
@@ -115,9 +121,69 @@ export function normalizeTiptapDocument(value: unknown): TiptapDoc {
   return validated ?? { ...EMPTY_TIPTAP_DOC };
 }
 
+function blockNodeToHtml(node: unknown): string {
+  if (!isPlainObject(node)) {
+    return "";
+  }
+  if (node.type === "emailCtaButton") {
+    const payload = validateEmailCtaPayload(node.attrs);
+    return payload ? emailCtaComment(payload) : "";
+  }
+  return sanitizeEmailHtml(
+    generateHTML({ type: "doc", content: [node] }, editorExtensions),
+  );
+}
+
 export function tiptapJsonToHtml(doc: TiptapDoc): string {
-  const raw = generateHTML(doc, editorExtensions);
-  return sanitizeEmailHtml(raw);
+  const normalized = normalizeTiptapDocument(doc);
+  const blocks = Array.isArray(normalized.content) ? normalized.content : [];
+  return blocks.map((block) => blockNodeToHtml(block)).join("");
+}
+
+function inlineContentToPlain(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  let text = "";
+  for (const child of content) {
+    if (!isPlainObject(child)) {
+      continue;
+    }
+    if (child.type === "text" && typeof child.text === "string") {
+      text += child.text;
+    } else if (child.type === "hardBreak") {
+      text += "\n";
+    }
+  }
+  return text;
+}
+
+function blockNodeToPlain(node: unknown): string {
+  if (!isPlainObject(node)) {
+    return "";
+  }
+  if (node.type === "emailCtaButton") {
+    const payload = validateEmailCtaPayload(node.attrs);
+    return payload ? `${payload.label} (${payload.href})` : "";
+  }
+  if (node.type === "paragraph") {
+    return inlineContentToPlain(node.content);
+  }
+  return htmlToPlainText(blockNodeToHtml(node));
+}
+
+export function tiptapJsonToPlainText(doc: TiptapDoc): string {
+  const normalized = normalizeTiptapDocument(doc);
+  const blocks = Array.isArray(normalized.content) ? normalized.content : [];
+  return blocks
+    .map((block) => blockNodeToPlain(block))
+    .filter((block) => block.length > 0)
+    .join("\n\n")
+    .trim();
+}
+
+export function finalizeTestMessageHtml(html: string): string {
+  return prepareTestSendHtml(html, sanitizeEmailHtml);
 }
 
 export function sanitizeEmailHtml(html: string): string {
@@ -139,7 +205,7 @@ export function htmlToPlainText(html: string): string {
 export function processDraftContent(contentJson: unknown) {
   const normalized = normalizeTiptapDocument(contentJson);
   const bodyHtml = tiptapJsonToHtml(normalized);
-  const bodyText = htmlToPlainText(bodyHtml);
+  const bodyText = tiptapJsonToPlainText(normalized);
   return {
     contentJson: normalized,
     bodyHtml,
