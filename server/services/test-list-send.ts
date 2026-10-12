@@ -211,6 +211,7 @@ export async function sendDesignatedTestList(
   userId: string,
   input: TestListSendInput,
   audit: TestListAuditContext = {},
+  recipientOwnerId = userId,
 ): Promise<TestListSendOutcome> {
   const loadedConfig = loadMailConfig();
   if (!loadedConfig.ok) {
@@ -219,6 +220,7 @@ export async function sendDesignatedTestList(
   }
   const config = loadedConfig.config;
   const limit = testMessageListRecipientLimit();
+  const listOwnerId = recipientOwnerId;
 
   return withPgAdvisoryLock(db, `mail-test-list:${input.idempotencyKey}`, async () => {
     await expireStalePendingSubmissions(db);
@@ -241,7 +243,7 @@ export async function sendDesignatedTestList(
     let snapshot: FrozenRecipient[] = existing?.recipientSnapshot ?? [];
 
     if (!operation) {
-      const loaded = await loadOwnedTestList(db, userId, input.testListId);
+      const loaded = await loadOwnedTestList(db, listOwnerId, input.testListId);
       if ("error" in loaded) {
         return loaded.error === "not_found" ? { kind: "not_found" } : { kind: "not_test_list" };
       }
@@ -362,7 +364,7 @@ export async function sendDesignatedTestList(
         if (claim !== "send") return claim;
         if (!submission) return "unknown";
 
-        if (await emailSuppressedNow(db, userId, recipient.email)) {
+        if (await emailSuppressedNow(db, listOwnerId, recipient.email)) {
           await updateSubmission(db, submission.id, {
             status: "suppressed",
             sentCopyStatus: "not_attempted",

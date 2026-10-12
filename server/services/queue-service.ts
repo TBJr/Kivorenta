@@ -8,6 +8,7 @@ import {
   queueEvents,
 } from "../db/schema.js";
 import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
+import { resolveRecipientOwnerIdForUserId } from "../lib/org-workspace.js";
 import { recordCampaignEvent } from "./campaign-audit.js";
 import { recordAuditEvent } from "./audit-log.js";
 import { validateCampaignContentFields } from "./campaign-content.js";
@@ -223,7 +224,8 @@ export async function enqueueCampaignForSimulation(
     throw new Error("INVALID_CONTENT");
   }
 
-  const summary = await refreshCampaignRecipientSnapshot(db, userId, campaignId);
+  const recipientOwnerId = await resolveRecipientOwnerIdForUserId(db, userId);
+  const summary = await refreshCampaignRecipientSnapshot(db, userId, campaignId, recipientOwnerId);
   if (!summary) return null;
   const eligibleRecipientRows = await db
     .select()

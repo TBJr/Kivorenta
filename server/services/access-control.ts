@@ -11,8 +11,11 @@ import {
 } from "../auth/permissions.js";
 import type { Database } from "../db/index.js";
 import { appPermissions, appRolePermissions, appRoles, appUserRoles, user } from "../db/schema.js";
+import { ensureOrgWorkspaceUser } from "../lib/org-workspace.js";
 
 export async function seedAccessControl(db: Database) {
+  await ensureOrgWorkspaceUser(db);
+
   for (const key of PERMISSIONS) {
     const detail = PERMISSION_DETAILS[key];
     await db

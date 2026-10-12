@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { validationError } from "../lib/http-errors.js";
+import { resolveRecipientOwnerId } from "../lib/org-workspace.js";
 import { getSessionUser } from "../lib/session.js";
 import {
   bulkDeleteContacts,
@@ -31,13 +32,15 @@ export function registerContactRoutes(app: Hono) {
   app.get("/api/contacts/stats", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
-    const stats = await getContactStats(db, user.id);
+    const ownerId = resolveRecipientOwnerId(user);
+    const stats = await getContactStats(db, ownerId);
     return c.json({ stats });
   });
 
   app.get("/api/contacts", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const parsed = listContactsQuerySchema.safeParse({
       page: c.req.query("page"),
@@ -49,20 +52,21 @@ export function registerContactRoutes(app: Hono) {
     });
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
-    const result = await listContacts(db, user.id, parsed.data);
+    const result = await listContacts(db, ownerId, parsed.data);
     return c.json(result);
   });
 
   app.post("/api/contacts", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const body = await c.req.json().catch(() => null);
     const parsed = createContactSchema.safeParse(body);
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
     try {
-      const row = await createContact(db, user.id, parsed.data);
+      const row = await createContact(db, ownerId, parsed.data, user.id);
       return c.json({ contact: serializeContact(row) }, 201);
     } catch (error) {
       if (error instanceof Error) {
@@ -77,11 +81,12 @@ export function registerContactRoutes(app: Hono) {
   app.get("/api/contacts/:id", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const params = contactIdParamSchema.safeParse({ id: c.req.param("id") });
     if (!params.success) return c.json({ error: "Contact not found" }, 404);
 
-    const row = await getContactById(db, user.id, params.data.id);
+    const row = await getContactById(db, ownerId, params.data.id);
     if (!row) return c.json({ error: "Contact not found" }, 404);
     return c.json({ contact: serializeContact(row) });
   });
@@ -89,6 +94,7 @@ export function registerContactRoutes(app: Hono) {
   app.patch("/api/contacts/:id", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const params = contactIdParamSchema.safeParse({ id: c.req.param("id") });
     if (!params.success) return c.json({ error: "Contact not found" }, 404);
@@ -98,7 +104,7 @@ export function registerContactRoutes(app: Hono) {
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
     try {
-      const row = await updateContact(db, user.id, params.data.id, parsed.data);
+      const row = await updateContact(db, ownerId, params.data.id, parsed.data, user.id);
       if (!row) return c.json({ error: "Contact not found" }, 404);
       return c.json({ contact: serializeContact(row) });
     } catch (error) {
@@ -114,11 +120,12 @@ export function registerContactRoutes(app: Hono) {
   app.delete("/api/contacts/:id", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const params = contactIdParamSchema.safeParse({ id: c.req.param("id") });
     if (!params.success) return c.json({ error: "Contact not found" }, 404);
 
-    const deleted = await deleteContact(db, user.id, params.data.id);
+    const deleted = await deleteContact(db, ownerId, params.data.id, user.id);
     if (!deleted) return c.json({ error: "Contact not found" }, 404);
     return c.json({ ok: true });
   });
@@ -126,11 +133,12 @@ export function registerContactRoutes(app: Hono) {
   app.post("/api/contacts/:id/unsubscribe", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const params = contactIdParamSchema.safeParse({ id: c.req.param("id") });
     if (!params.success) return c.json({ error: "Contact not found" }, 404);
 
-    const row = await unsubscribeContact(db, user.id, params.data.id);
+    const row = await unsubscribeContact(db, ownerId, params.data.id);
     if (!row) return c.json({ error: "Contact not found" }, 404);
     return c.json({ contact: serializeContact(row) });
   });
@@ -138,24 +146,26 @@ export function registerContactRoutes(app: Hono) {
   app.post("/api/contacts/bulk/unsubscribe", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const body = await c.req.json().catch(() => null);
     const parsed = bulkContactActionSchema.safeParse(body);
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
-    const result = await bulkUnsubscribeContacts(db, user.id, parsed.data.contactIds);
+    const result = await bulkUnsubscribeContacts(db, ownerId, parsed.data.contactIds);
     return c.json(result);
   });
 
   app.post("/api/contacts/bulk/delete", async (c) => {
     const user = await getSessionUser(c.req.raw.headers);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const ownerId = resolveRecipientOwnerId(user);
 
     const body = await c.req.json().catch(() => null);
     const parsed = bulkContactActionSchema.safeParse(body);
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
-    const result = await bulkDeleteContacts(db, user.id, parsed.data.contactIds);
+    const result = await bulkDeleteContacts(db, ownerId, parsed.data.contactIds);
     return c.json(result);
   });
 }

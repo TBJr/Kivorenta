@@ -254,6 +254,7 @@ export async function createContact(
     consentMethod?: string;
     consentOccurredAt?: string;
   },
+  actorUserId?: string,
 ) {
   const email = normalizeEmail(input.email);
   if (!isValidEmail(email)) {
@@ -301,7 +302,7 @@ export async function createContact(
     await recordAuditEvent(db, {
       action: AUDIT_ACTIONS.contactCreated,
       category: "CONTACT",
-      actorUserId: userId,
+      actorUserId: actorUserId ?? userId,
       resourceType: "contact",
       resourceId: row.id,
     });
@@ -334,6 +335,7 @@ export async function updateContact(
     consentMethod?: string;
     consentOccurredAt?: string;
   },
+  actorUserId?: string,
 ) {
   const existing = await getContactById(db, userId, contactId);
   if (!existing) return null;
@@ -387,7 +389,7 @@ export async function updateContact(
     await recordAuditEvent(db, {
       action: AUDIT_ACTIONS.contactUpdated,
       category: "CONTACT",
-      actorUserId: userId,
+      actorUserId: actorUserId ?? userId,
       resourceType: "contact",
       resourceId: row.id,
     });
@@ -402,7 +404,7 @@ export async function updateContact(
   }
 }
 
-export async function deleteContact(db: Database, userId: string, contactId: string) {
+export async function deleteContact(db: Database, userId: string, contactId: string, actorUserId?: string) {
   const [row] = await db
     .delete(contacts)
     .where(and(eq(contacts.id, contactId), eq(contacts.userId, userId)))
@@ -411,7 +413,7 @@ export async function deleteContact(db: Database, userId: string, contactId: str
     await recordAuditEvent(db, {
       action: AUDIT_ACTIONS.contactDeleted,
       category: "CONTACT",
-      actorUserId: userId,
+      actorUserId: actorUserId ?? userId,
       resourceType: "contact",
       resourceId: row.id,
     });

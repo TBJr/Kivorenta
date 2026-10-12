@@ -9,6 +9,7 @@ import {
   deliveryJobs,
   emailSuppressions,
 } from "../db/schema.js";
+import { resolveRecipientOwnerIdForUserId } from "../lib/org-workspace.js";
 import { classifyContactEligibility, type ContactCandidate } from "./campaign-eligibility.js";
 import { loadQueueEnv } from "../queue/configuration.js";
 import { recordQueueEvent } from "./queue-events.js";
@@ -44,10 +45,12 @@ export async function recheckRecipientEligibility(
     return { eligible: false, reason: "contact_missing", email: recipient.email };
   }
 
+  const recipientOwnerId = await resolveRecipientOwnerIdForUserId(db, userId);
+
   const [contact] = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, recipient.contactId), eq(contacts.userId, userId)))
+    .where(and(eq(contacts.id, recipient.contactId), eq(contacts.userId, recipientOwnerId)))
     .limit(1);
 
   if (!contact) {
@@ -57,7 +60,7 @@ export async function recheckRecipientEligibility(
   const [suppression] = await db
     .select({ id: emailSuppressions.id })
     .from(emailSuppressions)
-    .where(and(eq(emailSuppressions.userId, userId), eq(emailSuppressions.email, contact.email)))
+    .where(and(eq(emailSuppressions.userId, recipientOwnerId), eq(emailSuppressions.email, contact.email)))
     .limit(1);
 
   const suppressed = new Set(suppression ? [contact.email] : []);

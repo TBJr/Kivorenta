@@ -31,6 +31,7 @@ export async function executeCsvImport(
   userId: string,
   csvText: string,
   mapping: ColumnMapping,
+  actorUserId?: string,
 ) {
   const parsed = parseCsvText(csvText, IMPORT_LIMITS.maxRows);
   const results = {
@@ -132,7 +133,7 @@ export async function executeCsvImport(
   await recordAuditEvent(db, {
     action: AUDIT_ACTIONS.contactsImported,
     category: "CONTACT",
-    actorUserId: userId,
+    actorUserId: actorUserId ?? userId,
     resourceType: "contact_import",
     metadata: {
       totalRows: results.totalRows,

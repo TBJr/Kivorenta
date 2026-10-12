@@ -5,6 +5,7 @@ import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { validationError } from "../lib/http-errors.js";
 import type { PermissionKey } from "../auth/permissions.js";
+import { resolveRecipientOwnerId } from "../lib/org-workspace.js";
 import { getSessionUser } from "../lib/session.js";
 import { userHasPermission } from "../services/access-control.js";
 import { loadMailConfig } from "../mail/configuration.js";
@@ -85,7 +86,8 @@ export function registerMailRoutes(app: Hono) {
   app.get("/api/mail/test-lists", async (c) => {
     const access = await requireMailbox(c, "mailbox.send_test");
     if ("response" in access) return access.response;
-    const lists = await listDesignatedTestLists(db, access.user.id);
+    const ownerId = resolveRecipientOwnerId(access.user);
+    const lists = await listDesignatedTestLists(db, ownerId);
     return json(c, { lists, limit: testMessageListRecipientLimit() });
   });
 
@@ -125,6 +127,7 @@ export function registerMailRoutes(app: Hono) {
             ipAddress: clientIpFromRequest(c),
             userAgent: userAgentFromRequest(c),
           },
+          resolveRecipientOwnerId(access.user),
         );
         if (outcome.kind === "not_configured") {
           return json(c, { error: "Email account is not configured on the server.", code: "smtp_unavailable" }, 503);
@@ -260,10 +263,15 @@ export function registerMailRoutes(app: Hono) {
     const parsed = individualSendSchema.safeParse(body);
     if (!parsed.success) return json(c, validationError(parsed.error), 400);
 
-    const outcome = await sendIndividualEmail(db, access.user.id, {
-      ...parsed.data,
-      draftId: parsed.data.draftId ?? null,
-    });
+    const outcome = await sendIndividualEmail(
+      db,
+      access.user.id,
+      {
+        ...parsed.data,
+        draftId: parsed.data.draftId ?? null,
+      },
+      { recipientOwnerId: resolveRecipientOwnerId(access.user) },
+    );
 
     const auditCtx = {
       ipAddress: clientIpFromRequest(c),

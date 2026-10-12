@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { validationError } from "../lib/http-errors.js";
+import { resolveRecipientOwnerId } from "../lib/org-workspace.js";
 import { getSessionUser } from "../lib/session.js";
 import {
   createCampaign,
@@ -92,7 +93,13 @@ export function registerCampaignRoutes(app: Hono) {
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
     try {
-      const row = await updateCampaign(db, user.id, params.data.id, parsed.data);
+      const row = await updateCampaign(
+        db,
+        user.id,
+        params.data.id,
+        parsed.data,
+        resolveRecipientOwnerId(user),
+      );
       if (!row) return c.json({ error: "Campaign not found" }, 404);
       return c.json({ campaign: serializeCampaign(row) });
     } catch (error) {
@@ -163,7 +170,7 @@ export function registerCampaignRoutes(app: Hono) {
     try {
       const result = await previewRecipientEligibility(
         db,
-        user.id,
+        resolveRecipientOwnerId(user),
         parsed.data.contactIds,
         parsed.data.contactListIds,
       );
@@ -188,7 +195,7 @@ export function registerCampaignRoutes(app: Hono) {
     const params = campaignIdParamSchema.safeParse({ id: c.req.param("id") });
     if (!params.success) return c.json({ error: "Campaign not found" }, 404);
 
-    const result = await validateCampaign(db, user.id, params.data.id);
+    const result = await validateCampaign(db, user.id, params.data.id, resolveRecipientOwnerId(user));
     if (!result) return c.json({ error: "Campaign not found" }, 404);
 
     return c.json(result);
@@ -206,7 +213,13 @@ export function registerCampaignRoutes(app: Hono) {
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
     try {
-      const result = await prepareCampaign(db, user.id, params.data.id, parsed.data);
+      const result = await prepareCampaign(
+        db,
+        user.id,
+        params.data.id,
+        parsed.data,
+        resolveRecipientOwnerId(user),
+      );
       if (!result) return c.json({ error: "Campaign not found" }, 404);
 
       if (parsed.data.markReady && result.contentIssues.length > 0) {

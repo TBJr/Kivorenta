@@ -104,7 +104,7 @@ export async function sendIndividualEmail(
   db: Database,
   userId: string,
   input: IndividualSendInput,
-  deps?: { submit?: Submit },
+  deps?: { submit?: Submit; recipientOwnerId?: string },
 ): Promise<IndividualSendOutcome> {
   const loaded = loadMailConfig();
   if (!loaded.ok) return { kind: "not_configured" };
@@ -137,7 +137,7 @@ export async function sendIndividualEmail(
   if (!provisional.ok) return { kind: "invalid", message: provisional.message };
 
   const emails = [...provisional.to, ...provisional.cc, ...provisional.bcc];
-  const eligibility = await loadEligibility(db, userId, emails);
+  const eligibility = await loadEligibility(db, deps?.recipientOwnerId ?? userId, emails);
   const recipients = assessDirectRecipients({
     to: provisional.to,
     cc: provisional.cc,

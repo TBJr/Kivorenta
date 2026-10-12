@@ -66,6 +66,7 @@ export async function createSuppression(
   db: Database,
   userId: string,
   input: { email: string; reason: SuppressionReason },
+  actorUserId?: string,
 ) {
   const email = normalizeEmail(input.email);
 
@@ -96,7 +97,7 @@ export async function createSuppression(
       await recordAuditEvent(db, {
         action: AUDIT_ACTIONS.suppressionCreated,
         category: "SUPPRESSION",
-        actorUserId: userId,
+        actorUserId: actorUserId ?? userId,
         resourceType: "suppression",
         resourceId: row.id,
         metadata: { reason: input.reason },

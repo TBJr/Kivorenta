@@ -55,6 +55,7 @@ export async function createContactList(
   db: Database,
   userId: string,
   input: { name: string; description?: string; isTestList?: boolean },
+  actorUserId?: string,
 ) {
   try {
     const [row] = await db
@@ -71,7 +72,7 @@ export async function createContactList(
       await recordAuditEvent(db, {
         action: AUDIT_ACTIONS.contactListCreated,
         category: "RECIPIENT_LIST",
-        actorUserId: userId,
+        actorUserId: actorUserId ?? userId,
         resourceType: "contact_list",
         resourceId: row.id,
         metadata: { listName: row.name, isTestList: row.isTestList },
@@ -90,6 +91,7 @@ export async function updateContactList(
   userId: string,
   listId: string,
   input: { name?: string; description?: string; isTestList?: boolean },
+  actorUserId?: string,
 ) {
   const existing = await getContactListById(db, userId, listId);
   if (!existing) return null;
@@ -112,7 +114,7 @@ export async function updateContactList(
       await recordAuditEvent(db, {
         action: AUDIT_ACTIONS.contactListUpdated,
         category: "RECIPIENT_LIST",
-        actorUserId: userId,
+        actorUserId: actorUserId ?? userId,
         resourceType: "contact_list",
         resourceId: row.id,
         metadata: { listName: row.name },
@@ -126,7 +128,7 @@ export async function updateContactList(
   }
 }
 
-export async function deleteContactList(db: Database, userId: string, listId: string) {
+export async function deleteContactList(db: Database, userId: string, listId: string, actorUserId?: string) {
   const [row] = await db
     .delete(contactLists)
     .where(and(eq(contactLists.id, listId), eq(contactLists.userId, userId)))
@@ -135,7 +137,7 @@ export async function deleteContactList(db: Database, userId: string, listId: st
     await recordAuditEvent(db, {
       action: AUDIT_ACTIONS.contactListDeleted,
       category: "RECIPIENT_LIST",
-      actorUserId: userId,
+      actorUserId: actorUserId ?? userId,
       resourceType: "contact_list",
       resourceId: row.id,
       metadata: { listName: row.name },

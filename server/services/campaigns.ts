@@ -316,11 +316,11 @@ async function loadSuppressedSet(db: Database, userId: string) {
 
 export async function computeEligibilityForCampaign(
   db: Database,
-  userId: string,
+  recipientOwnerId: string,
   campaignId: string,
 ): Promise<{ rows: ReturnType<typeof buildEligibilitySnapshot>["rows"]; summary: EligibilitySummary }> {
   const sources = await getRecipientSources(db, campaignId);
-  return computeEligibilityFromSources(db, userId, sources);
+  return computeEligibilityFromSources(db, recipientOwnerId, sources);
 }
 
 function sourcesFromRecipientIds(contactIds: string[], contactListIds: string[]) {
@@ -390,7 +390,7 @@ const EXCLUSION_PREVIEW_LIMIT = 100;
 
 export async function previewRecipientEligibility(
   db: Database,
-  userId: string,
+  recipientOwnerId: string,
   contactIds: string[],
   contactListIds: string[],
 ): Promise<{
@@ -401,7 +401,7 @@ export async function previewRecipientEligibility(
   const { uniqueListIds } = sourcesFromRecipientIds(contactIds, contactListIds);
   const { rows, summary } = await computeEligibilityForRecipientSources(
     db,
-    userId,
+    recipientOwnerId,
     contactIds,
     contactListIds,
   );
@@ -418,11 +418,11 @@ export async function previewRecipientEligibility(
 
   const listHints: ContactListEligibilityHint[] = [];
   for (const listId of uniqueListIds) {
-    const list = await getContactListById(db, userId, listId);
+    const list = await getContactListById(db, recipientOwnerId, listId);
     if (!list) continue;
     const { summary: listSummary } = await computeEligibilityForRecipientSources(
       db,
-      userId,
+      recipientOwnerId,
       [],
       [listId],
     );
@@ -443,11 +443,12 @@ export async function refreshCampaignRecipientSnapshot(
   db: Database,
   userId: string,
   campaignId: string,
+  recipientOwnerId = userId,
 ) {
   const existing = await getCampaignById(db, userId, campaignId);
   if (!existing) return null;
 
-  const { rows, summary } = await computeEligibilityForCampaign(db, userId, campaignId);
+  const { rows, summary } = await computeEligibilityForCampaign(db, recipientOwnerId, campaignId);
   const evaluatedAt = new Date();
 
   await db.transaction(async (tx) => {
@@ -500,6 +501,7 @@ export async function updateCampaign(
     scheduleTimezone?: string | null;
     revertToDraft?: boolean;
   },
+  recipientOwnerId = userId,
 ) {
   const existing = await getCampaignById(db, userId, campaignId);
   if (!existing) return null;
@@ -560,7 +562,7 @@ export async function updateCampaign(
   if (input.recipientSources) {
     const contactIds = [...new Set(input.recipientSources.contactIds ?? [])];
     const contactListIds = [...new Set(input.recipientSources.contactListIds ?? [])];
-    await validateRecipientOwnership(db, userId, contactIds, contactListIds);
+    await validateRecipientOwnership(db, recipientOwnerId, contactIds, contactListIds);
     await replaceRecipientSources(db, campaignId, contactIds, contactListIds);
     await recordCampaignEvent(db, {
       campaignId,
@@ -720,6 +722,7 @@ export async function prepareCampaign(
   userId: string,
   campaignId: string,
   options: { markReady: boolean },
+  recipientOwnerId = userId,
 ) {
   const existing = await getCampaignById(db, userId, campaignId);
   if (!existing) return null;
@@ -740,7 +743,7 @@ export async function prepareCampaign(
     return { campaign: existing, contentIssues, eligibility: null as EligibilitySummary | null };
   }
 
-  const { rows, summary } = await computeEligibilityForCampaign(db, userId, campaignId);
+  const { rows, summary } = await computeEligibilityForCampaign(db, recipientOwnerId, campaignId);
 
   if (options.markReady) {
     if (!existing.name.trim()) {
@@ -829,6 +832,7 @@ export async function validateCampaign(
   db: Database,
   userId: string,
   campaignId: string,
+  recipientOwnerId = userId,
 ) {
   const existing = await getCampaignById(db, userId, campaignId);
   if (!existing) return null;
@@ -841,7 +845,7 @@ export async function validateCampaign(
     bodyText: existing.bodyText,
   });
 
-  const { rows, summary } = await computeEligibilityForCampaign(db, userId, campaignId);
+  const { rows, summary } = await computeEligibilityForCampaign(db, recipientOwnerId, campaignId);
 
   const exclusions = rows
     .filter((row) => row.eligibilityStatus !== "eligible")
