@@ -71,6 +71,13 @@
       "when": 1791640000000,
       "tag": "0009_audit_log_phase_7_7",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791650000000,
+      "tag": "0010_test_message_lists",
+      "breakpoints": true
     }
   ]
 }

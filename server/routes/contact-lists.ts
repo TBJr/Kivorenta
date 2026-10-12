@@ -3,8 +3,11 @@ import { z } from "zod";
 
 import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { validationError } from "../lib/http-errors.js";
+import { clientIpFromRequest, userAgentFromRequest } from "../lib/request-context.js";
 import { getSessionUser } from "../lib/session.js";
+import { recordAuditEvent } from "../services/audit-log.js";
 import { serializeContact } from "../services/contacts.js";
 import {
   addContactsToList,
@@ -84,11 +87,29 @@ export function registerContactListRoutes(app: Hono) {
     if (!parsed.success) return c.json(validationError(parsed.error), 400);
 
     try {
-      const row = await updateContactList(db, user.id, params.data.id, parsed.data);
-      if (!row) return c.json({ error: "List not found" }, 404);
+      const updated = await updateContactList(db, user.id, params.data.id, parsed.data);
+      if (!updated) return c.json({ error: "List not found" }, 404);
+      if (updated.previousIsTestList !== updated.row.isTestList) {
+        await recordAuditEvent(db, {
+          action: updated.row.isTestList
+            ? AUDIT_ACTIONS.recipientListMarkedTest
+            : AUDIT_ACTIONS.recipientListUnmarkedTest,
+          category: "RECIPIENT_LIST",
+          result: "success",
+          actorUserId: user.id,
+          actorEmail: user.email,
+          resourceType: "contact_list",
+          resourceId: updated.row.id,
+          requestContext: {
+            ipAddress: clientIpFromRequest(c),
+            userAgent: userAgentFromRequest(c),
+          },
+          metadata: { listId: updated.row.id, listName: updated.row.name },
+        }).catch(() => undefined);
+      }
       const detail = await listContactsInList(db, user.id, params.data.id, 1, 1);
       return c.json({
-        list: serializeContactList(row, detail?.pagination.total ?? 0),
+        list: serializeContactList(updated.row, detail?.pagination.total ?? 0),
       });
     } catch (error) {
       if (error instanceof Error && error.message === "DUPLICATE_NAME") {

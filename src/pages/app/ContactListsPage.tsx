@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +29,7 @@ import {
   createContactList,
   deleteContactList,
   fetchContactLists,
+  updateContactList,
   type ContactList,
 } from "@/lib/recipients-api";
 
@@ -37,6 +39,7 @@ export function ContactListsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isTestList, setIsTestList] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ContactList | null>(null);
 
   const load = useCallback(() => {
@@ -84,10 +87,20 @@ export function ContactListsPage() {
                       </Link>
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">{list.memberCount} contacts</p>
+                    {list.isTestList ? <Badge variant="outline">Test list</Badge> : null}
                   </div>
-                  <Button variant="ghost" size="icon-sm" onClick={() => setPendingDelete(list)} aria-label="Delete list">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void updateContactList(list.id, { isTestList: !list.isTestList }).then(() => load())}
+                    >
+                      {list.isTestList ? "Unmark test list" : "Mark as test list"}
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setPendingDelete(list)} aria-label="Delete list">
                     <Trash2 />
                   </Button>
+                  </div>
                 </CardHeader>
                 {list.description ? (
                   <CardContent className="pt-0 text-sm text-muted-foreground">{list.description}</CardContent>
@@ -110,9 +123,18 @@ export function ContactListsPage() {
               <Label>Description</Label>
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={isTestList}
+                onChange={(event) => setIsTestList(event.target.checked)}
+              />
+              <span>Test list. Settings → Test Message can send a separate email to each eligible member.</span>
+            </label>
           </div>
           <DialogFooter>
-            <Button onClick={() => void createContactList({ name, description }).then(() => { setDialogOpen(false); setName(""); setDescription(""); void load(); })}>
+            <Button onClick={() => void createContactList({ name, description, isTestList }).then(() => { setDialogOpen(false); setName(""); setDescription(""); setIsTestList(false); void load(); })}>
               Create
             </Button>
           </DialogFooter>

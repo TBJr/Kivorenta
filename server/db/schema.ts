@@ -151,6 +151,7 @@ export const contactLists = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
+    isTestList: boolean("is_test_list").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -422,6 +423,41 @@ export const mailConnectionChecks = pgTable(
   (table) => [index("mail_connection_checks_checked_at_idx").on(table.checkedAt)],
 );
 
+export const testMessageOperations = pgTable(
+  "test_message_operations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    listId: text("list_id").references(() => contactLists.id, { onDelete: "set null" }),
+    listName: text("list_name").notNull(),
+    subject: text("subject").notNull(),
+    status: text("status").notNull(),
+    requestedCount: integer("requested_count").notNull().default(0),
+    eligibleCount: integer("eligible_count").notNull().default(0),
+    acceptedCount: integer("accepted_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    suppressedCount: integer("suppressed_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+    recipientSnapshot: jsonb("recipient_snapshot")
+      .$type<{ contactId: string; email: string }[]>()
+      .notNull()
+      .default([]),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("test_message_operations_idempotency_key_unique").on(table.idempotencyKey),
+    index("test_message_operations_user_created_idx").on(table.userId, table.createdAt),
+  ],
+);
+
 export const mailSubmissions = pgTable(
   "mail_submissions",
   {
@@ -430,6 +466,10 @@ export const mailSubmissions = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     idempotencyKey: text("idempotency_key").notNull(),
+    operationId: text("operation_id").references(() => testMessageOperations.id, {
+      onDelete: "set null",
+    }),
+    contactId: text("contact_id").references(() => contacts.id, { onDelete: "set null" }),
     fromAddress: text("from_address").notNull(),
     toAddress: text("to_address").notNull(),
     subject: text("subject").notNull(),

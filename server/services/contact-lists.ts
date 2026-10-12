@@ -11,6 +11,7 @@ export function serializeContactList(
     id: row.id,
     name: row.name,
     description: row.description,
+    isTestList: row.isTestList,
     memberCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -51,7 +52,7 @@ export async function getContactListById(db: Database, userId: string, listId: s
 export async function createContactList(
   db: Database,
   userId: string,
-  input: { name: string; description?: string },
+  input: { name: string; description?: string; isTestList?: boolean },
 ) {
   try {
     const [row] = await db
@@ -61,6 +62,7 @@ export async function createContactList(
         userId,
         name: input.name.trim(),
         description: input.description?.trim() ?? "",
+        isTestList: input.isTestList ?? false,
       })
       .returning();
     return row ?? null;
@@ -75,7 +77,7 @@ export async function updateContactList(
   db: Database,
   userId: string,
   listId: string,
-  input: { name?: string; description?: string },
+  input: { name?: string; description?: string; isTestList?: boolean },
 ) {
   const existing = await getContactListById(db, userId, listId);
   if (!existing) return null;
@@ -86,11 +88,13 @@ export async function updateContactList(
       .set({
         name: input.name?.trim() ?? existing.name,
         description: input.description?.trim() ?? existing.description,
+        isTestList: input.isTestList ?? existing.isTestList,
         updatedAt: new Date(),
       })
       .where(and(eq(contactLists.id, listId), eq(contactLists.userId, userId)))
       .returning();
-    return row ?? null;
+    if (!row) return null;
+    return { row, previousIsTestList: existing.isTestList };
   } catch (error) {
     const pgCode = (error as { code?: string }).code;
     if (pgCode === "23505") throw new Error("DUPLICATE_NAME", { cause: error });

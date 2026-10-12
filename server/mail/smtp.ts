@@ -187,7 +187,20 @@ export async function submitAuthorizedMessage(
 ): Promise<CompiledSubmission> {
   const to = normalizeEmail(message.to);
   assertAuthorizedParties(config, { from: config.email, to });
+  return submitSingleRecipientMessage(config, { ...message, to });
+}
 
+/**
+ * One SMTP message, one envelope recipient, no Cc or Bcc.
+ * Caller must already have authorized the address. Test-list members are not
+ * on the environment allowlist; single-recipient tests still use
+ * submitAuthorizedMessage.
+ */
+export async function submitSingleRecipientMessage(
+  config: MailConfig,
+  message: { subject: string; text: string; html: string; to: string },
+): Promise<CompiledSubmission> {
+  const to = normalizeEmail(message.to);
   const domain = config.email.split("@")[1] ?? "localhost";
   const messageId = `<${crypto.randomUUID()}@${domain}>`;
   const mail: SendMailOptions = {

@@ -19,6 +19,11 @@ const SENSITIVE_METADATA_KEYS = new Set([
   "contentJson",
   "bodyHtml",
   "bodyText",
+  "html",
+  "text",
+  "recipients",
+  "recipientSnapshot",
+  "recipientEmails",
   "raw",
 ]);
 

@@ -17,6 +17,8 @@ import {
 } from "../mail/imap.js";
 import { getMailboxStatus, testMailboxConnection } from "../services/mail-connection.js";
 import { sendControlledTest } from "../services/mail-test-send.js";
+import { listDesignatedTestLists, sendDesignatedTestList } from "../services/test-list-send.js";
+import { rejectsClientRecipientBatch, testMessageListRecipientLimit } from "../services/test-list-plan.js";
 import { sendIndividualEmail } from "../services/individual-send.js";
 import { listIndividualSubmissions } from "../services/individual-send-records.js";
 import { toPublicIndividualSend } from "../mail/individual-send-public.js";
@@ -80,6 +82,13 @@ export function registerMailRoutes(app: Hono) {
     return json(c, result.status);
   });
 
+  app.get("/api/mail/test-lists", async (c) => {
+    const access = await requireMailbox(c, "mailbox.send_test");
+    if ("response" in access) return access.response;
+    const lists = await listDesignatedTestLists(db, access.user.id);
+    return json(c, { lists, limit: testMessageListRecipientLimit() });
+  });
+
   app.post("/api/mail/test-send", async (c) => {
     const access = await requireMailbox(c, "mailbox.send_test");
     if ("response" in access) return access.response;
@@ -90,14 +99,93 @@ export function registerMailRoutes(app: Hono) {
     } catch {
       return json(c, { error: "Invalid JSON body" }, 400);
     }
+    if (rejectsClientRecipientBatch(body)) {
+      return json(c, { error: "Choose one recipient or a designated test list." }, 400);
+    }
 
     const parsed = testSendSchema.safeParse(body);
     if (!parsed.success) {
       return json(c, validationError(parsed.error), 400);
     }
 
+    if (parsed.data.recipientMode === "test_list") {
+      try {
+        const outcome = await sendDesignatedTestList(
+          db,
+          access.user.id,
+          {
+            subject: parsed.data.subject,
+            text: parsed.data.text,
+            html: parsed.data.html,
+            idempotencyKey: parsed.data.idempotencyKey,
+            testListId: parsed.data.testListId ?? "",
+          },
+          {
+            actorEmail: access.user.email,
+            ipAddress: clientIpFromRequest(c),
+            userAgent: userAgentFromRequest(c),
+          },
+        );
+        if (outcome.kind === "not_configured") {
+          return json(c, { error: "Email account is not configured on the server." }, 503);
+        }
+        if (outcome.kind === "not_found") return json(c, { error: "List not found" }, 404);
+        if (outcome.kind === "not_test_list") {
+          return json(c, { error: "Only a list marked as a test list can be used." }, 400);
+        }
+        if (outcome.kind === "none_eligible") {
+          return json(
+            c,
+            {
+              error: "This test list has no eligible recipients.",
+              requested: outcome.requested,
+              suppressed: outcome.suppressed,
+              skipped: outcome.skipped,
+            },
+            400,
+          );
+        }
+        if (outcome.kind === "over_limit") {
+          return json(
+            c,
+            {
+              error: `This test list has ${outcome.eligible} eligible recipients. Test sends are limited to ${outcome.limit}.`,
+              code: "recipient_limit",
+              eligible: outcome.eligible,
+              limit: outcome.limit,
+            },
+            400,
+          );
+        }
+        if (outcome.kind === "rate_limited") return json(c, { error: outcome.message }, 429);
+        return json(c, {
+          summary: outcome.summary,
+          results: outcome.results.map((result) => ({
+            email: result.email,
+            outcome: result.outcome === "accepted" ? "smtp_accepted" : result.outcome,
+          })),
+          duplicate: outcome.kind === "duplicate",
+        });
+      } catch (error) {
+        if (error instanceof MailboxError) {
+          return json(c, { error: error.message }, error.status);
+        }
+        throw error;
+      }
+    }
+
+    if (!parsed.data.testRecipient) {
+      return json(c, { error: "Choose an authorized test recipient." }, 400);
+    }
+
     try {
-      const outcome = await sendControlledTest(db, access.user.id, parsed.data);
+      const outcome = await sendControlledTest(db, access.user.id, {
+        subject: parsed.data.subject,
+        text: parsed.data.text,
+        html: parsed.data.html,
+        idempotencyKey: parsed.data.idempotencyKey,
+        testRecipient: parsed.data.testRecipient,
+      });
       if (outcome.kind === "not_configured") {
         return json(c, { error: "Email account is not configured on the server." }, 503);
       }

@@ -21,14 +21,18 @@ import { PageMeta } from "@/components/layout/PageMeta";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
+  fetchTestLists,
   getMailStatus,
   MailApiError,
   sendMailTest,
+  sendMailTestList,
   submissionFromError,
   testMailConnection,
   type ConnectionState,
   type MailStatus,
   type MailSubmission,
+  type TestListOption,
+  type TestListSummary,
 } from "@/lib/mail-api";
 import { EMPTY_TIPTAP_DOC, processDraftContent, type TiptapDoc } from "@/lib/message-content";
 
@@ -76,11 +80,16 @@ export function SettingsPage() {
   const [submission, setSubmission] = useState<MailSubmission | null>(null);
   const [duplicate, setDuplicate] = useState(false);
   const [selectedTestRecipient, setSelectedTestRecipient] = useState("");
+  const [recipientMode, setRecipientMode] = useState<"single" | "test_list">("single");
+  const [testLists, setTestLists] = useState<TestListOption[]>([]);
+  const [listLimit, setListLimit] = useState(8);
+  const [selectedListId, setSelectedListId] = useState("");
+  const [listSummary, setListSummary] = useState<TestListSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getMailStatus()
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         setStatus(result);
         setSubmission(result.latestSubmission);
@@ -88,6 +97,18 @@ export function SettingsPage() {
           setSelectedTestRecipient((current) =>
             current && result.testRecipients.includes(current) ? current : result.testRecipients[0]!,
           );
+        }
+        try {
+          const lists = await fetchTestLists();
+          if (!cancelled) {
+            setTestLists(lists.lists);
+            setListLimit(lists.limit);
+            setSelectedListId((current) =>
+              current && lists.lists.some((list) => list.id === current) ? current : (lists.lists[0]?.id ?? ""),
+            );
+          }
+        } catch {
+          if (!cancelled) setTestLists([]);
         }
         setLoading(false);
       })
@@ -129,16 +150,29 @@ export function SettingsPage() {
     setSendError(null);
     try {
       const message = processDraftContent(contentJson);
-      const result = await sendMailTest({
-        subject: subject.trim(),
-        text: message.bodyText,
-        html: message.bodyHtml,
-        testRecipient: selectedTestRecipient,
-        confirm: true,
-        idempotencyKey,
-      });
-      setSubmission(result.submission);
-      setDuplicate(result.duplicate);
+      if (recipientMode === "test_list") {
+        const result = await sendMailTestList({
+          subject: subject.trim(),
+          text: message.bodyText,
+          html: message.bodyHtml,
+          testListId: selectedListId,
+          confirm: true,
+          idempotencyKey,
+        });
+        setListSummary(result.summary);
+        setDuplicate(result.duplicate);
+      } else {
+        const result = await sendMailTest({
+          subject: subject.trim(),
+          text: message.bodyText,
+          html: message.bodyHtml,
+          testRecipient: selectedTestRecipient,
+          confirm: true,
+          idempotencyKey,
+        });
+        setSubmission(result.submission);
+        setDuplicate(result.duplicate);
+      }
       setIdempotencyKey(null);
       setAcknowledged(false);
       setConfirmOpen(false);
@@ -163,11 +197,15 @@ export function SettingsPage() {
   }
 
   const hasTestRecipients = Boolean(status?.configured && status.testRecipients.length > 0);
+  const selectedList = testLists.find((list) => list.id === selectedListId) ?? null;
+  const listWithinLimit = Boolean(selectedList && selectedList.eligibleCount > 0 && selectedList.eligibleCount <= listLimit);
   const messagePreview = useMemo(() => processDraftContent(contentJson), [contentJson]);
+  const recipientReady =
+    recipientMode === "test_list" ? listWithinLimit : Boolean(hasTestRecipients && selectedTestRecipient);
 
   const canSend =
-    hasTestRecipients &&
-    selectedTestRecipient.length > 0 &&
+    Boolean(status?.configured) &&
+    recipientReady &&
     acknowledged &&
     subject.trim().length > 0 &&
     messagePreview.bodyText.trim().length > 0 &&
@@ -247,11 +285,11 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle>Test message</CardTitle>
                 <CardDescription>
-                  Sends one message from the configured mailbox to the authorized test recipient.
+                  Sends a separate message to one authorized recipient, or to each eligible member of a test list.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {hasTestRecipients ? (
+                {status.configured ? (
                   <form
                     className="space-y-4"
                     onSubmit={(event) => {
@@ -263,24 +301,90 @@ export function SettingsPage() {
                       <p className="text-muted-foreground">From</p>
                       <p>{status.accountEmail}</p>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="test-recipient">Authorized test recipient</Label>
-                      <select
-                        id="test-recipient"
-                        className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        value={selectedTestRecipient}
-                        onChange={(event) => {
-                          setSelectedTestRecipient(event.target.value);
-                          setIdempotencyKey(null);
-                        }}
-                      >
-                        {status.testRecipients.map((recipient) => (
-                          <option key={recipient} value={recipient}>
-                            {recipient}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-medium">Recipient</legend>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === "single"}
+                          onChange={() => {
+                            setRecipientMode("single");
+                            setIdempotencyKey(null);
+                          }}
+                        />
+                        Single recipient
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === "test_list"}
+                          onChange={() => {
+                            setRecipientMode("test_list");
+                            setIdempotencyKey(null);
+                          }}
+                        />
+                        Test list
+                      </label>
+                    </fieldset>
+                    {recipientMode === "single" ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="test-recipient">Authorized test recipient</Label>
+                        {hasTestRecipients ? (
+                          <select
+                            id="test-recipient"
+                            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                            value={selectedTestRecipient}
+                            onChange={(event) => {
+                              setSelectedTestRecipient(event.target.value);
+                              setIdempotencyKey(null);
+                            }}
+                          >
+                            {status.testRecipients.map((recipient) => (
+                              <option key={recipient} value={recipient}>
+                                {recipient}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No authorized single recipient is configured.</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="test-list">Test list</Label>
+                        {testLists.length > 0 ? (
+                          <select
+                            id="test-list"
+                            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                            value={selectedListId}
+                            onChange={(event) => {
+                              setSelectedListId(event.target.value);
+                              setIdempotencyKey(null);
+                            }}
+                          >
+                            {testLists.map((list) => (
+                              <option key={list.id} value={list.id}>
+                                {list.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No test lists yet. Mark a recipient list as a test list first.
+                          </p>
+                        )}
+                        {selectedList ? (
+                          <p className="text-sm text-muted-foreground">
+                            {selectedList.eligibleCount} eligible recipient{selectedList.eligibleCount === 1 ? "" : "s"}
+                            {selectedList.eligibleCount > listLimit
+                              ? `. The safety limit is ${listLimit}.`
+                              : "."}
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="test-subject">Subject</Label>
                       <Input
@@ -312,7 +416,9 @@ export function SettingsPage() {
                         onChange={(event) => setAcknowledged(event.target.checked)}
                       />
                       <span>
-                        I confirm this sends one message to {selectedTestRecipient} and does not start a campaign.
+                        {recipientMode === "test_list"
+                          ? `I confirm this sends ${selectedList?.eligibleCount ?? 0} separate messages to “${selectedList?.name ?? "the test list"}” and does not start a campaign.`
+                          : `I confirm this sends one message to ${selectedTestRecipient} and does not start a campaign.`}
                       </span>
                     </label>
                     {sendError ? (
@@ -321,7 +427,11 @@ export function SettingsPage() {
                       </p>
                     ) : null}
                     <Button type="submit" disabled={!canSend}>
-                      {sending ? "Sending…" : "Review test message"}
+                      {sending
+                        ? "Sending…"
+                        : recipientMode === "test_list"
+                          ? "Send test messages"
+                          : "Review test message"}
                     </Button>
                   </form>
                 ) : (
@@ -332,7 +442,28 @@ export function SettingsPage() {
               </CardContent>
             </Card>
 
-            {submission ? (
+            {listSummary ? (
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Test send complete</CardTitle>
+                  <CardDescription>Test list: {listSummary.listName}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm" role="status">
+                  {duplicate ? <p>This request was already submitted. No additional messages were sent.</p> : null}
+                  <p>Eligible recipients: {listSummary.eligible}</p>
+                  <p>SMTP accepted: {listSummary.smtpAccepted}</p>
+                  <p>Failed: {listSummary.failed}</p>
+                  <p>Suppressed: {listSummary.suppressed}</p>
+                  {listSummary.skipped > 0 ? <p>Skipped: {listSummary.skipped}</p> : null}
+                  {listSummary.message ? <p className="text-destructive">{listSummary.message}</p> : null}
+                  <p className="text-muted-foreground">
+                    SMTP acceptance does not confirm inbox delivery. Each address was submitted separately.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {submission && recipientMode === "single" ? (
               <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Last test submission</CardTitle>
@@ -362,11 +493,15 @@ export function SettingsPage() {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Send one test message?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {recipientMode === "test_list"
+                ? `Send test message to “${selectedList?.name ?? "this test list"}”?`
+                : "Send one test message?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This sends a single plain-text and HTML message from {status?.accountEmail} to{" "}
-              {selectedTestRecipient}. Subject: {subject.trim() || "(empty)"}. Acceptance by the outgoing
-              server does not confirm inbox delivery. Campaign queues are not used.
+              {recipientMode === "test_list"
+                ? `Kivorenta will submit one separate email to each of ${selectedList?.eligibleCount ?? 0} eligible recipients in “${selectedList?.name ?? "this test list"}”. Each recipient receives an individual message. SMTP acceptance does not confirm inbox delivery.`
+                : `This sends a single plain-text and HTML message from ${status?.accountEmail ?? "the mailbox"} to ${selectedTestRecipient}. Subject: ${subject.trim() || "(empty)"}. Acceptance by the outgoing server does not confirm inbox delivery. Campaign queues are not used.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -378,7 +513,11 @@ export function SettingsPage() {
                 void submitTest();
               }}
             >
-              {sending ? "Sending…" : "Send one test message"}
+              {sending
+                ? "Sending…"
+                : recipientMode === "test_list"
+                  ? `Send ${selectedList?.eligibleCount ?? 0} test messages`
+                  : "Send one test message"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -17,6 +17,7 @@ export type ContactList = {
   id: string;
   name: string;
   description: string;
+  isTestList: boolean;
   memberCount: number;
   createdAt: string;
   updatedAt: string;
@@ -134,14 +135,17 @@ export function fetchContactLists() {
   return request<{ lists: ContactList[] }>("/api/contact-lists");
 }
 
-export function createContactList(input: { name: string; description?: string }) {
+export function createContactList(input: { name: string; description?: string; isTestList?: boolean }) {
   return request<{ list: ContactList }>("/api/contact-lists", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export function updateContactList(id: string, input: { name?: string; description?: string }) {
+export function updateContactList(
+  id: string,
+  input: { name?: string; description?: string; isTestList?: boolean },
+) {
   return request<{ list: ContactList }>(`/api/contact-lists/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),

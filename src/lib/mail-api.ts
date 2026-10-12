@@ -166,6 +166,52 @@ export function listIndividualSends(page = 1, limit = 10) {
   }>(`/api/mail/sends?page=${page}&limit=${limit}`);
 }
 
+export type TestListOption = {
+  id: string;
+  name: string;
+  memberCount: number;
+  eligibleCount: number;
+};
+
+export type TestListSummary = {
+  listId: string;
+  listName: string;
+  requested: number;
+  eligible: number;
+  smtpAccepted: number;
+  failed: number;
+  suppressed: number;
+  skipped: number;
+  status: "completed" | "failed";
+  message: string | null;
+};
+
+export type TestListResult = {
+  email: string;
+  outcome: "smtp_accepted" | "rejected" | "failed" | "suppressed";
+};
+
+export function fetchTestLists() {
+  return request<{ lists: TestListOption[]; limit: number }>("/api/mail/test-lists");
+}
+
+export function sendMailTestList(input: {
+  subject: string;
+  text: string;
+  html?: string;
+  testListId: string;
+  confirm: true;
+  idempotencyKey: string;
+}) {
+  return request<{ summary: TestListSummary; results: TestListResult[]; duplicate: boolean }>(
+    "/api/mail/test-send",
+    {
+      method: "POST",
+      body: JSON.stringify({ ...input, recipientMode: "test_list" }),
+    },
+  );
+}
+
 export function sendMailTest(input: {
   subject: string;
   text: string;
@@ -176,7 +222,7 @@ export function sendMailTest(input: {
 }) {
   return request<{ submission: MailSubmission; duplicate: boolean }>("/api/mail/test-send", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, recipientMode: "single" }),
   });
 }
 

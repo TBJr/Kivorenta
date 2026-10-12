@@ -38,6 +38,7 @@ export const SENDSTACK_APP_TABLES = [
   "delivery_jobs",
   "delivery_job_attempts",
   "queue_events",
+  "test_message_operations",
 ] as const;
 
 export const DRIZZLE_META_TABLES = ["__drizzle_migrations"] as const;

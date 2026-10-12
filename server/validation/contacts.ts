@@ -86,11 +86,13 @@ export const contactIdParamSchema = z.object({
 export const createContactListSchema = z.object({
   name: z.string().trim().min(1).max(CONTACT_LIMITS.listNameMax),
   description: z.string().max(CONTACT_LIMITS.listDescriptionMax).optional(),
+  isTestList: z.boolean().optional(),
 });
 
 export const updateContactListSchema = z.object({
   name: z.string().trim().min(1).max(CONTACT_LIMITS.listNameMax).optional(),
   description: z.string().max(CONTACT_LIMITS.listDescriptionMax).optional(),
+  isTestList: z.boolean().optional(),
 });
 
 export const listMembersBodySchema = z.object({

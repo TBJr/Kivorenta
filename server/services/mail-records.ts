@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
 
 import type { Database } from "../db/index.js";
 import { mailConnectionChecks, mailSubmissions } from "../db/schema.js";
@@ -67,7 +67,7 @@ export async function listRecentSubmissionTimes(db: Database, since: Date) {
   return db
     .select({ createdAt: mailSubmissions.createdAt })
     .from(mailSubmissions)
-    .where(gte(mailSubmissions.createdAt, since));
+    .where(and(isNull(mailSubmissions.operationId), gte(mailSubmissions.createdAt, since)));
 }
 
 export async function findSubmissionByKey(db: Database, idempotencyKey: string) {
@@ -87,6 +87,8 @@ export async function insertPendingSubmission(
     fromAddress: string;
     toAddress: string;
     subject: string;
+    operationId?: string | null;
+    contactId?: string | null;
   },
 ) {
   const rows = await db
@@ -95,6 +97,8 @@ export async function insertPendingSubmission(
       id: crypto.randomUUID(),
       userId: input.userId,
       idempotencyKey: input.idempotencyKey,
+      operationId: input.operationId ?? null,
+      contactId: input.contactId ?? null,
       fromAddress: input.fromAddress,
       toAddress: input.toAddress,
       subject: input.subject,

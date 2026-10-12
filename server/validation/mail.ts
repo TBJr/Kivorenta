@@ -42,7 +42,7 @@ export const individualSendListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(25).default(10),
 });
 
-export const testSendSchema = z.object({
+const testMessageFields = {
   subject: z
     .string()
     .trim()
@@ -51,7 +51,25 @@ export const testSendSchema = z.object({
     .refine((value) => !/[\r\n]/.test(value), "Subject cannot contain line breaks"),
   text: z.string().trim().min(1).max(20_000),
   html: z.string().max(100_000).optional(),
-  testRecipient: z.string().trim().email(),
   confirm: z.literal(true),
   idempotencyKey: z.string().uuid(),
+  recipientMode: z.enum(["single", "test_list"]).default("single"),
+  testRecipient: z.string().trim().email().optional(),
+  testListId: z.string().uuid().optional(),
+};
+
+export const testSendSchema = z.object(testMessageFields).superRefine((value, ctx) => {
+  if (value.recipientMode === "test_list") {
+    if (!value.testListId) {
+      ctx.addIssue({ code: "custom", path: ["testListId"], message: "Choose a test list." });
+    }
+    return;
+  }
+  if (!value.testRecipient) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["testRecipient"],
+      message: "Choose an authorized test recipient.",
+    });
+  }
 });

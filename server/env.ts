@@ -23,6 +23,11 @@ const envSchema = z.object({
     emptyToUndefined,
     z.coerce.number().int().min(1_000).max(30_000).optional(),
   ),
+  /** Eligible recipients allowed in one Settings test-list send. Default 8. */
+  TEST_MESSAGE_MAX_LIST_RECIPIENTS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(25).optional(),
+  ),
   BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
   BETTER_AUTH_URL: z.string().url(),
   FRONTEND_URL: z.string().url(),

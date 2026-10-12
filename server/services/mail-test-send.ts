@@ -37,7 +37,7 @@ export type TestSendOutcome =
   | { kind: "rejected"; submission: PublicSubmission }
   | { kind: "failed"; submission: PublicSubmission };
 
-function prepareHtml(input: TestSendInput) {
+export function prepareTestMessageHtml(input: { text: string; html?: string }) {
   if (!input.html?.trim()) {
     return plainTextToSafeHtml(input.text);
   }
@@ -152,7 +152,7 @@ export async function sendControlledTest(
       }),
     send: async (pending) => {
       try {
-        const html = prepareHtml(input);
+        const html = prepareTestMessageHtml(input);
         const submitted = await submitAuthorizedMessage(config, {
           subject: input.subject,
           text: input.text,

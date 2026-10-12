@@ -56,6 +56,11 @@ export const AUDIT_ACTIONS = {
   contactListCreated: "contact_list_created",
   contactListUpdated: "contact_list_updated",
   contactListDeleted: "contact_list_deleted",
+  recipientListMarkedTest: "recipient_list_marked_test",
+  recipientListUnmarkedTest: "recipient_list_unmarked_test",
+  testMessageListSendRequested: "test_message_list_send_requested",
+  testMessageListSendCompleted: "test_message_list_send_completed",
+  testMessageListSendFailed: "test_message_list_send_failed",
   suppressionCreated: "suppression_created",
   campaignSimulationRequested: "campaign_simulation_requested",
   campaignSimulationCompleted: "campaign_simulation_completed",
@@ -102,6 +107,11 @@ const ACTION_LABELS: Record<string, string> = {
   contact_list_created: "Recipient list created",
   contact_list_updated: "Recipient list updated",
   contact_list_deleted: "Recipient list deleted",
+  recipient_list_marked_test: "Recipient list marked as a test list",
+  recipient_list_unmarked_test: "Recipient list unmarked as a test list",
+  test_message_list_send_requested: "Test list send requested",
+  test_message_list_send_completed: "Test list send completed",
+  test_message_list_send_failed: "Test list send failed",
   suppression_created: "Suppression added",
   campaign_simulation_requested: "Campaign simulation queued",
   campaign_simulation_completed: "Campaign simulation completed",
@@ -124,7 +134,7 @@ export function categoryForAction(action: string): AuditCategory {
   if (action.includes("password") || action.includes("two_factor")) return "SECURITY";
   if (action.includes("invitation") || action.startsWith("user")) return "USER_MANAGEMENT";
   if (action.includes("role")) return "ROLE_MANAGEMENT";
-  if (action.startsWith("email_")) return "EMAIL";
+  if (action.startsWith("email_") || action.startsWith("test_message_")) return "EMAIL";
   if (action.includes("draft")) return "DRAFT";
   if (action.startsWith("contact_") && !action.includes("list")) return "CONTACT";
   if (action.includes("contact_list") || action.includes("list_")) return "RECIPIENT_LIST";

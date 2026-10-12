@@ -24,6 +24,7 @@ import {
   fetchListDetail,
   RecipientsApiError,
   removeContactsFromList,
+  updateContactList,
   type Contact,
   type ContactList,
 } from "@/lib/recipients-api";
@@ -131,6 +132,25 @@ export function ContactListDetailsPage() {
           }
         />
         <RecipientsNav />
+        {list ? (
+          <label className="mb-4 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-primary"
+              checked={list.isTestList}
+              onChange={(event) => {
+                const next = event.target.checked;
+                void updateContactList(list.id, { isTestList: next }).then(() => refresh());
+              }}
+            />
+            <span>
+              <span className="font-medium">Test list</span>
+              <span className="block text-muted-foreground">
+                Purpose: testing. Settings → Test Message can send one separate email to each eligible member.
+              </span>
+            </span>
+          </label>
+        ) : null}
         <Card>
           <CardContent className="p-0 sm:p-0">
             {loading ? <Skeleton className="h-40 w-full" /> : (
