@@ -10,7 +10,15 @@ import {
   ROLE_TEMPLATES,
   type SystemRoleKey,
 } from "../auth/permissions.js";
-import { canDirectlyCreatePasswordAccount, customRoleKeyError, invalidPermissionKeys, roleGrantError, userCreatedAuditMetadata } from "../auth/policy.js";
+import {
+  canDirectlyCreatePasswordAccount,
+  customRoleKeyError,
+  invalidPermissionKeys,
+  roleGrantError,
+  userCreatedAuditMetadata,
+  userDeleteDecision,
+} from "../auth/policy.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import type { Database } from "../db/index.js";
 import {
   adminAuditEvents,
@@ -369,16 +377,114 @@ export async function requestUserPasswordReset(db: Database, actorId: string, us
   return { ok: true as const };
 }
 
-export async function deactivateOrDeleteUser(db: Database, actorId: string, userId: string) {
-  const statusResult = await setUserStatus(db, { id: actorId }, userId, "deactivated");
-  if ("error" in statusResult) return statusResult;
+export function adminSetPasswordAuditMetadata(input: {
+  requirePasswordChange: boolean;
+  sessionsRevoked?: boolean;
+}) {
+  return {
+    method: "admin_set" as const,
+    requirePasswordChange: input.requirePasswordChange,
+    sessionsRevoked: input.sessionsRevoked ?? true,
+  };
+}
+
+export async function setAdminUserPassword(
+  db: Database,
+  actor: { id: string; role?: string | null },
+  userId: string,
+  input: { password: string; confirmPassword: string; requirePasswordChange?: boolean },
+  headers: Headers,
+) {
+  if (!canDirectlyCreatePasswordAccount(actor.role)) {
+    return { error: "Only a super admin can set account passwords.", status: 403 as const };
+  }
+
+  const passwordError = validatePassword(input.password);
+  if (passwordError) return { error: passwordError, status: 400 as const };
+  if (input.password !== input.confirmPassword) {
+    return { error: "Passwords do not match.", status: 400 as const };
+  }
+
+  const [account] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1);
+  if (!account) return { error: "User not found", status: 404 as const };
+
+  const requirePasswordChange = input.requirePasswordChange ?? false;
+
+  try {
+    await auth.api.setUserPassword({
+      body: { userId, newPassword: input.password },
+      headers,
+    });
+  } catch {
+    await recordAudit(db, {
+      actorUserId: actor.id,
+      targetUserId: userId,
+      action: AUDIT_ACTIONS.passwordChangeFailed,
+      eventType: "password",
+      result: "failure",
+      metadata: { method: "admin_set", reason: "set_user_password_rejected" },
+    });
+    return { error: "Could not update this password.", status: 400 as const };
+  }
+
+  await db
+    .update(user)
+    .set({ mustChangePassword: requirePasswordChange, updatedAt: new Date() })
+    .where(eq(user.id, userId));
+
+  await revokeUserSessions(db, actor.id, userId);
+
   await recordAudit(db, {
-    actorUserId: actorId,
+    actorUserId: actor.id,
     targetUserId: userId,
-    action: "user_deactivated",
-    metadata: { retention: "Account access disabled. Campaigns, drafts, contacts, and history were kept." },
+    action: AUDIT_ACTIONS.passwordChanged,
+    eventType: "password",
+    result: "success",
+    metadata: adminSetPasswordAuditMetadata({ requirePasswordChange, sessionsRevoked: true }),
   });
-  return statusResult;
+
+  return { ok: true as const };
+}
+
+/**
+ * Permanently removes an account. Related rows cascade through foreign keys.
+ * Audit keeps name and email in metadata because target_user_id becomes null.
+ */
+export async function deleteAdminUser(db: Database, actorId: string, userId: string) {
+  return withPgAdvisoryLock(db, "sendstack-last-super-admin", async () => {
+    const [target] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
+    const [access] = await db.select().from(appUserAccess).where(eq(appUserAccess.userId, userId)).limit(1);
+    const activeSuperAdmins = await countActiveSuperAdmins(db);
+    const targetIsActiveSuperAdmin = Boolean(
+      target &&
+        parseRoleKeys(target.role).includes("super-admin") &&
+        (access?.status ?? "active") === "active" &&
+        !target.banned,
+    );
+    const decision = userDeleteDecision({
+      actorId,
+      targetId: target?.id,
+      targetExists: Boolean(target),
+      activeSuperAdmins,
+      targetIsActiveSuperAdmin,
+    });
+    if (!decision.ok) return { error: decision.error, status: decision.status };
+    if (!target) return { error: "User not found", status: 404 as const };
+
+    await recordAudit(db, {
+      actorUserId: actorId,
+      targetUserId: userId,
+      action: AUDIT_ACTIONS.userDeleted,
+      metadata: {
+        deletedUserId: userId,
+        name: target.name,
+        email: target.email,
+        roles: parseRoleKeys(target.role),
+      },
+    });
+    await db.delete(user).where(eq(user.id, userId));
+    return { ok: true as const, deletedUserId: userId };
+  });
 }
 
 export async function listRoles(db: Database) {

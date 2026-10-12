@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { PageMeta } from "@/components/layout/PageMeta";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
@@ -16,6 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { validatePassword } from "@/lib/auth-validation";
+import { useAuthorization } from "@/lib/authorization";
 import { authClient } from "@/lib/auth-client";
 
 type UserDetail = {
@@ -40,6 +43,7 @@ const ASSIGNABLE = ["viewer", "editor", "campaign-manager", "admin", "user"];
 
 export function UserDetailsPage() {
   const { userId = "" } = useParams();
+  const navigate = useNavigate();
   const location = useLocation();
   const created = Boolean((location.state as { created?: boolean } | null)?.created);
   const [account, setAccount] = useState<UserDetail | null>(null);
@@ -48,13 +52,24 @@ export function UserDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const { can } = useAuthorization();
   const { data: session } = authClient.useSession();
+  const sessionUserId = session?.user?.id ?? "";
   const isSuperAdmin = ((session?.user as { role?: string } | undefined)?.role ?? "")
     .split(",")
     .map((part) => part.trim())
     .includes("super-admin");
+  const canDeleteAccount = can("users.delete") && Boolean(sessionUserId) && sessionUserId !== userId;
 
   async function load() {
     const response = await fetch(`/api/admin/users/${userId}`, { credentials: "include" });
@@ -163,10 +178,87 @@ export function UserDetailsPage() {
     setMessage(response.ok ? "Password reset email requested." : payload.error);
   }
 
+  function openChangePassword() {
+    setError(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setRequirePasswordChange(false);
+    setChangePasswordOpen(true);
+  }
+
+  async function confirmChangePassword() {
+    if (!account || changing || !isSuperAdmin) return;
+    setError(null);
+    const policyError = validatePassword(newPassword);
+    if (policyError) {
+      setError(policyError);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setChanging(true);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/password`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: newPassword,
+          confirmPassword,
+          requirePasswordChange,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof payload.error === "string" ? payload.error : "Could not update this password.");
+        setChanging(false);
+        return;
+      }
+      setChangePasswordOpen(false);
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setRequirePasswordChange(false);
+      setMessage("Password updated.");
+      await load();
+    } catch {
+      setError("Could not update this password.");
+    } finally {
+      setChanging(false);
+    }
+  }
+
   async function revokeSessions() {
     const response = await fetch(`/api/admin/users/${userId}/sessions`, { method: "DELETE", credentials: "include" });
     setMessage(response.ok ? "Sessions revoked." : "Could not revoke sessions.");
     await load();
+  }
+
+  function openDelete() {
+    setError(null);
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!account || deleting || !canDeleteAccount) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, { method: "DELETE", credentials: "include" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof payload.error === "string" ? payload.error : "Could not delete this account.");
+        setDeleting(false);
+        return;
+      }
+      navigate("/app/admin/users/", { state: { deleted: true } });
+    } catch {
+      setError("Could not delete this account.");
+      setDeleting(false);
+    }
   }
 
   if (!account) {
@@ -183,7 +275,7 @@ export function UserDetailsPage() {
           actions={<Button variant="outline" asChild><Link to="/app/admin/users/">Back</Link></Button>}
         />
         {created ? <p className="text-sm" role="status">User created successfully.</p> : null}
-        {error && !verifyOpen ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error && !verifyOpen && !deleteOpen && !changePasswordOpen ? <p className="text-sm text-destructive">{error}</p> : null}
         {message ? <p className="text-sm" role="status">{message}</p> : null}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
@@ -243,6 +335,12 @@ export function UserDetailsPage() {
                 <Button type="button" variant="outline" onClick={() => void setStatus("deactivated")}>Deactivate</Button>
                 <Button type="button" variant="outline" onClick={() => void revokeSessions()}>Revoke sessions</Button>
                 <Button type="button" variant="outline" onClick={() => void resetPassword()}>Reset password</Button>
+                {isSuperAdmin ? (
+                  <Button type="button" variant="outline" onClick={openChangePassword}>Change password</Button>
+                ) : null}
+                {canDeleteAccount ? (
+                  <Button type="button" variant="destructive" onClick={openDelete}>Delete account</Button>
+                ) : null}
               </div>
               <ul className="space-y-2 text-sm">
                 {account.sessions.map((item) => (
@@ -296,6 +394,78 @@ export function UserDetailsPage() {
                 onClick={() => void confirmVerify()}
               >
                 {verifying ? "Verifying…" : "Confirm Verification"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={deleteOpen} onOpenChange={(open) => { if (!deleting) setDeleteOpen(open); }}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Delete account?</DialogTitle>
+              <DialogDescription>
+                This permanently removes {account.name}&apos;s account. Their sessions, drafts, campaigns, and contacts are removed.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 text-sm">
+              <p className="wrap-break-word"><span className="text-muted-foreground">Name: </span>{account.name}</p>
+              <p className="break-all"><span className="text-muted-foreground">Email: </span>{account.email}</p>
+            </div>
+            {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" disabled={deleting} onClick={() => setDeleteOpen(false)}>Cancel</Button>
+              <Button type="button" variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+                {deleting ? "Deleting…" : "Delete account"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={changePasswordOpen} onOpenChange={(open) => { if (!changing) setChangePasswordOpen(open); }}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Change password</DialogTitle>
+              <DialogDescription>
+                Set a new password for {account.name}. Their other sessions will be signed out.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="grid gap-2">
+                <Label htmlFor="admin-new-password">New password</Label>
+                <Input
+                  id="admin-new-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="admin-confirm-password">Confirm password</Label>
+                <Input
+                  id="admin-confirm-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowPassword((value) => !value)}>
+                {showPassword ? "Hide password" : "Show password"}
+              </Button>
+              <label className="flex min-h-11 items-start gap-3 text-sm">
+                <input
+                  className="mt-1 size-5 shrink-0"
+                  type="checkbox"
+                  checked={requirePasswordChange}
+                  onChange={(event) => setRequirePasswordChange(event.target.checked)}
+                />
+                <span>Require password change on next sign-in</span>
+              </label>
+            </div>
+            {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" disabled={changing} onClick={() => setChangePasswordOpen(false)}>Cancel</Button>
+              <Button type="button" disabled={changing || !newPassword || !confirmPassword} onClick={() => void confirmChangePassword()}>
+                {changing ? "Updating…" : "Update password"}
               </Button>
             </DialogFooter>
           </DialogContent>

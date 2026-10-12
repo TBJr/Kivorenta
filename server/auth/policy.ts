@@ -82,4 +82,37 @@ export function invalidPermissionKeys(keys: string[]) {
   return keys.filter((key) => !PERMISSION_SET.has(key));
 }
 
+export type UserDeleteDecision =
+  | { ok: true }
+  | { ok: false; error: string; status: 403 | 404 };
+
+/**
+ * Pure guards for permanent account removal.
+ * Does not touch the database.
+ */
+export function userDeleteDecision(input: {
+  actorId: string;
+  targetId: string | null | undefined;
+  targetExists: boolean;
+  activeSuperAdmins: number;
+  targetIsActiveSuperAdmin: boolean;
+}): UserDeleteDecision {
+  if (!input.targetExists || !input.targetId) {
+    return { ok: false, error: "User not found", status: 404 };
+  }
+  if (input.actorId === input.targetId) {
+    return { ok: false, error: "You cannot delete your own account.", status: 403 };
+  }
+  if (
+    !superAdminRemovalAllowed({
+      activeSuperAdmins: input.activeSuperAdmins,
+      targetIsActiveSuperAdmin: input.targetIsActiveSuperAdmin,
+      nextIncludesSuperAdmin: false,
+    })
+  ) {
+    return { ok: false, error: "The last active super admin cannot be deleted.", status: 403 };
+  }
+  return { ok: true };
+}
+
 export type { PermissionKey };

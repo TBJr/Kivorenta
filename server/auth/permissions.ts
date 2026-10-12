@@ -255,6 +255,7 @@ export function permissionForRequest(path: string, method: string): PermissionKe
   if (normalized.startsWith("/api/admin/users")) {
     if (normalized.endsWith("/sessions") && method === "DELETE") return "users.manage_sessions";
     if (normalized.endsWith("/password-reset")) return "users.reset_password";
+    if (normalized.endsWith("/password") && method === "POST") return "users.update";
     if (normalized.endsWith("/status")) return "users.deactivate";
     if (normalized.endsWith("/verify-email") && method === "POST") return null;
     if (method === "GET") return "users.read";

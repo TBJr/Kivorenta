@@ -26,7 +26,7 @@ vi.mock("../services/admin.js", () => ({
   acceptInvitation: vi.fn(),
   createDirectUser: vi.fn(),
   createInvitation: vi.fn(),
-  deactivateOrDeleteUser: vi.fn(),
+  deleteAdminUser: vi.fn(),
   deleteRole: vi.fn(),
   getAdminUser: (...args: unknown[]) => getAdminUser(...args),
   getRole: vi.fn(),

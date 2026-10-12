@@ -9,8 +9,10 @@ import {
   roleGrantError,
   superAdminRemovalAllowed,
   userCreatedAuditMetadata,
+  userDeleteDecision,
 } from "../auth/policy.js";
-import { createUserSchema } from "../validation/admin-users.js";
+import { adminSetPasswordAuditMetadata } from "../services/admin.js";
+import { adminSetPasswordSchema, createUserSchema } from "../validation/admin-users.js";
 import { queueEnvSchema } from "../queue/configuration.js";
 
 describe("admin authorization", () => {
@@ -63,8 +65,63 @@ describe("admin authorization", () => {
     expect(permissionForRequest("/api/admin/users", "GET")).toBe("users.read");
     expect(permissionForRequest("/api/admin/users", "POST")).toBe("users.create");
     expect(permissionForRequest("/api/admin/users/invite", "POST")).toBe("users.invite");
+    expect(permissionForRequest("/api/admin/users/user-1/password", "POST")).toBe("users.update");
+    expect(permissionForRequest("/api/admin/users/user-1/password-reset", "POST")).toBe("users.reset_password");
+    expect(permissionForRequest("/api/admin/users/user-1", "DELETE")).toBe("users.delete");
     expect(permissionForRequest("/api/admin/audit", "GET")).toBe("audit.read");
     expect(permissionForRequest("/api/drafts", "GET")).toBe("drafts.read");
+  });
+
+  it("decides permanent user deletion without touching the database", () => {
+    expect(
+      userDeleteDecision({
+        actorId: "actor",
+        targetId: "target",
+        targetExists: true,
+        activeSuperAdmins: 2,
+        targetIsActiveSuperAdmin: false,
+      }),
+    ).toEqual({ ok: true });
+
+    expect(
+      userDeleteDecision({
+        actorId: "actor",
+        targetId: "actor",
+        targetExists: true,
+        activeSuperAdmins: 2,
+        targetIsActiveSuperAdmin: false,
+      }),
+    ).toMatchObject({ ok: false, status: 403, error: "You cannot delete your own account." });
+
+    expect(
+      userDeleteDecision({
+        actorId: "actor",
+        targetId: null,
+        targetExists: false,
+        activeSuperAdmins: 1,
+        targetIsActiveSuperAdmin: false,
+      }),
+    ).toMatchObject({ ok: false, status: 404, error: "User not found" });
+
+    expect(
+      userDeleteDecision({
+        actorId: "actor",
+        targetId: "last-super",
+        targetExists: true,
+        activeSuperAdmins: 1,
+        targetIsActiveSuperAdmin: true,
+      }),
+    ).toMatchObject({ ok: false, status: 403, error: "The last active super admin cannot be deleted." });
+
+    expect(
+      userDeleteDecision({
+        actorId: "actor",
+        targetId: "other-super",
+        targetExists: true,
+        activeSuperAdmins: 2,
+        targetIsActiveSuperAdmin: true,
+      }),
+    ).toEqual({ ok: true });
   });
 
   it("stores only a hash of an invitation token", () => {
@@ -98,6 +155,41 @@ describe("admin authorization", () => {
       status: "active",
     });
     expect(weak.success).toBe(false);
+  });
+
+  it("validates admin password set without storing password values in audit metadata", () => {
+    expect(canDirectlyCreatePasswordAccount("super-admin")).toBe(true);
+    expect(canDirectlyCreatePasswordAccount("admin")).toBe(false);
+
+    const mismatch = adminSetPasswordSchema.safeParse({
+      password: "long-enough-password",
+      confirmPassword: "different-password",
+    });
+    expect(mismatch.success).toBe(false);
+
+    const weak = adminSetPasswordSchema.safeParse({
+      password: "short",
+      confirmPassword: "short",
+    });
+    expect(weak.success).toBe(false);
+
+    const valid = adminSetPasswordSchema.safeParse({
+      password: "long-enough-password",
+      confirmPassword: "long-enough-password",
+      requirePasswordChange: true,
+    });
+    expect(valid.success).toBe(true);
+
+    const metadata = adminSetPasswordAuditMetadata({ requirePasswordChange: true, sessionsRevoked: true });
+    expect(metadata).toEqual({
+      method: "admin_set",
+      requirePasswordChange: true,
+      sessionsRevoked: true,
+    });
+    expect(JSON.stringify(metadata)).not.toContain("long-enough-password");
+    expect(metadata).not.toHaveProperty("password");
+    expect(metadata).not.toHaveProperty("confirmPassword");
+    expect(metadata).not.toHaveProperty("newPassword");
   });
 
   it("keeps the campaign queue simulation-only", () => {

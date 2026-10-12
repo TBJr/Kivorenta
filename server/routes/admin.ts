@@ -5,7 +5,7 @@ import { accessDeniedMessage } from "../lib/brand.js";
 import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { validationError } from "../lib/http-errors.js";
-import { createUserSchema, manualEmailVerificationSchema } from "../validation/admin-users.js";
+import { adminSetPasswordSchema, createUserSchema, manualEmailVerificationSchema } from "../validation/admin-users.js";
 import { loadAccountSecurityState } from "../lib/account-security.js";
 import { getSessionUser } from "../lib/session.js";
 import { manuallyVerifyUserEmail } from "../services/manual-email-verification.js";
@@ -23,7 +23,7 @@ import {
   acceptInvitation,
   createDirectUser,
   createInvitation,
-  deactivateOrDeleteUser,
+  deleteAdminUser,
   deleteRole,
   getAdminUser,
   getRole,
@@ -36,6 +36,7 @@ import {
   revokeInvitation,
   revokeUserSessions,
   saveRole,
+  setAdminUserPassword,
   setUserStatus,
   updateAdminUser,
 } from "../services/admin.js";
@@ -216,10 +217,20 @@ export function registerAdminRoutes(app: Hono) {
     return json(c, result);
   });
 
+  app.post("/api/admin/users/:userId/password", async (c) => {
+    const access = await requirePermission(c, "users.update");
+    if ("response" in access) return access.response;
+    const parsed = adminSetPasswordSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return json(c, validationError(parsed.error), 400);
+    const result = await setAdminUserPassword(db, access.user, c.req.param("userId"), parsed.data, c.req.raw.headers);
+    if ("error" in result) return json(c, { error: result.error }, result.status);
+    return json(c, result);
+  });
+
   app.delete("/api/admin/users/:userId", async (c) => {
     const access = await requirePermission(c, "users.delete");
     if ("response" in access) return access.response;
-    const result = await deactivateOrDeleteUser(db, access.user.id, c.req.param("userId"));
+    const result = await deleteAdminUser(db, access.user.id, c.req.param("userId"));
     if ("error" in result) return json(c, { error: result.error }, result.status);
     return json(c, result);
   });

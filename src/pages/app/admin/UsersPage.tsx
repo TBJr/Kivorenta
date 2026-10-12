@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { PageMeta } from "@/components/layout/PageMeta";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
@@ -7,6 +7,14 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthorization } from "@/lib/authorization";
+import { authClient } from "@/lib/auth-client";
 
 type UserRow = {
   id: string;
@@ -39,6 +49,12 @@ type Invitation = {
 };
 
 export function UsersPage() {
+  const location = useLocation();
+  const deletedNotice = Boolean((location.state as { deleted?: boolean } | null)?.deleted);
+  const { can } = useAuthorization();
+  const { data: session } = authClient.useSession();
+  const sessionUserId = session?.user?.id ?? "";
+  const canDeleteUsers = can("users.delete");
   const [users, setUsers] = useState<UserRow[]>([]);
   const [stats, setStats] = useState({ total: 0, active: 0, suspended: 0, pendingInvitations: 0 });
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -50,8 +66,10 @@ export function UsersPage() {
   const [inviteRole, setInviteRole] = useState("");
   const [roleOptions, setRoleOptions] = useState<{ id: string; key: string; name: string }[]>([]);
   const [showInvite, setShowInvite] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(deletedNotice ? "Account deleted." : null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     const params = new URLSearchParams({ search, role, status, verification, page: "1", limit: "25" });
@@ -135,6 +153,35 @@ export function UsersPage() {
     await load();
   }
 
+  function canDeleteAccount(account: UserRow) {
+    return canDeleteUsers && Boolean(sessionUserId) && sessionUserId !== account.id;
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete || deleting || !canDeleteAccount(pendingDelete)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/users/${pendingDelete.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof payload.error === "string" ? payload.error : "Could not delete this account.");
+        setDeleting(false);
+        return;
+      }
+      setMessage(`${pendingDelete.name} was deleted.`);
+      setPendingDelete(null);
+      setDeleting(false);
+      await load();
+    } catch {
+      setError("Could not delete this account.");
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <PageMeta title="Users | Kivorenta" description="Manage accounts, access, and permissions." canonicalPath="/app/admin/users/" />
@@ -186,12 +233,13 @@ export function UsersPage() {
             <option value="unverified">Unverified</option>
           </select>
         </form>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error && !pendingDelete ? <p className="text-sm text-destructive">{error}</p> : null}
+        {message ? <p className="text-sm" role="status">{message}</p> : null}
         <Card>
           <CardContent className="p-0">
             <ul className="divide-y md:hidden">
               {users.map((account) => (
-                <li key={account.id} className="space-y-1 px-4 py-3">
+                <li key={account.id} className="space-y-2 px-4 py-3">
                   <Link className="block font-medium wrap-break-word hover:underline" to={`/app/admin/users/${account.id}/`}>{account.name}</Link>
                   <p className="text-sm break-all text-muted-foreground">{account.email}</p>
                   <div className="flex flex-wrap gap-1">
@@ -201,6 +249,11 @@ export function UsersPage() {
                     <span className="capitalize">{account.status}</span>
                     <Badge variant={account.emailVerified ? "secondary" : "outline"}>{account.emailVerified ? "Verified" : "Unverified"}</Badge>
                   </div>
+                  {canDeleteAccount(account) ? (
+                    <Button type="button" size="sm" variant="destructive" onClick={() => { setError(null); setPendingDelete(account); }}>
+                      Delete
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -215,6 +268,7 @@ export function UsersPage() {
                   <TableHead>Verification</TableHead>
                   <TableHead>Last session</TableHead>
                   <TableHead>Created</TableHead>
+                  {canDeleteUsers ? <TableHead className="w-28">Actions</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -231,6 +285,17 @@ export function UsersPage() {
                     <TableCell><Badge variant={account.emailVerified ? "secondary" : "outline"}>{account.emailVerified ? "Verified" : "Unverified"}</Badge></TableCell>
                     <TableCell>{account.lastSessionAt ? new Date(account.lastSessionAt).toLocaleString() : "—"}</TableCell>
                     <TableCell>{new Date(account.createdAt).toLocaleDateString()}</TableCell>
+                    {canDeleteUsers ? (
+                      <TableCell>
+                        {canDeleteAccount(account) ? (
+                          <Button type="button" size="sm" variant="destructive" onClick={() => { setError(null); setPendingDelete(account); }}>
+                            Delete
+                          </Button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
@@ -254,7 +319,6 @@ export function UsersPage() {
               </div>
               <Button type="submit">Send invitation</Button>
             </form>
-            {message ? <p className="text-sm">{message}</p> : null}
             <ul className="space-y-2 text-sm">
               {invitations.map((invitation) => (
                 <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
@@ -266,6 +330,32 @@ export function UsersPage() {
           </CardContent>
         </Card> : null}
       </AppPageContainer>
+
+      <Dialog open={Boolean(pendingDelete)} onOpenChange={(open) => { if (!deleting && !open) setPendingDelete(null); }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete account?</DialogTitle>
+            <DialogDescription>
+              {pendingDelete
+                ? `This permanently removes ${pendingDelete.name}'s account. Their sessions, drafts, campaigns, and contacts are removed.`
+                : "This permanently removes the account."}
+            </DialogDescription>
+          </DialogHeader>
+          {pendingDelete ? (
+            <div className="space-y-2 text-sm">
+              <p className="wrap-break-word"><span className="text-muted-foreground">Name: </span>{pendingDelete.name}</p>
+              <p className="break-all"><span className="text-muted-foreground">Email: </span>{pendingDelete.email}</p>
+            </div>
+          ) : null}
+          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}>Cancel</Button>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+              {deleting ? "Deleting…" : "Delete account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
