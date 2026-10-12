@@ -2,8 +2,10 @@ import { and, desc, eq, ilike, sql } from "drizzle-orm";
 
 import type { Database } from "../db/index.js";
 import { contacts, emailSuppressions } from "../db/schema.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { normalizeEmail } from "../lib/email-normalization.js";
 import type { SUPPRESSION_REASONS } from "../validation/contacts.js";
+import { recordAuditEvent } from "./audit-log.js";
 
 type SuppressionReason = (typeof SUPPRESSION_REASONS)[number];
 
@@ -89,6 +91,17 @@ export async function createSuppression(
       .update(contacts)
       .set({ subscriptionStatus: "unsubscribed", updatedAt: new Date() })
       .where(and(eq(contacts.userId, userId), eq(contacts.email, email)));
+
+    if (row) {
+      await recordAuditEvent(db, {
+        action: AUDIT_ACTIONS.suppressionCreated,
+        category: "SUPPRESSION",
+        actorUserId: userId,
+        resourceType: "suppression",
+        resourceId: row.id,
+        metadata: { reason: input.reason },
+      });
+    }
 
     return row ?? null;
   } catch (error) {

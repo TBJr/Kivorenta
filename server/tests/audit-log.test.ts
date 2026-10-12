@@ -12,6 +12,7 @@ describe("audit taxonomy", () => {
   it("maps categories from actions", () => {
     expect(categoryForAction("draft_created")).toBe("DRAFT");
     expect(categoryForAction("campaign_simulation_requested")).toBe("CAMPAIGN");
+    expect(categoryForAction("page_viewed")).toBe("ACTIVITY");
   });
 });
 

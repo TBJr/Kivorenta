@@ -23,7 +23,9 @@ import {
   loadAccountSecurityState,
 } from "./lib/account-security.js";
 import { registerAccountRoutes } from "./routes/account.js";
+import { registerActivityRoutes } from "./routes/activity.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { recordAccessDeniedAudit } from "./services/access-denied-audit.js";
 import { recordAuthHandlerAudit } from "./services/auth-event-audit.js";
 import { registerCampaignRoutes } from "./routes/campaigns.js";
 import { registerContactImportRoutes } from "./routes/contact-import.js";
@@ -110,7 +112,16 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
     if (!permission) return next();
     if (!account) return c.json({ error: "Unauthorized" }, 401);
     const allowed = await userHasPermission(db, account, permission);
-    if (!allowed) return c.json({ error: "You do not have permission to do that." }, 403);
+    if (!allowed) {
+      void recordAccessDeniedAudit(db, {
+        actorUserId: account.id,
+        actorEmail: account.email,
+        permission,
+        path: c.req.path,
+        headers: c.req.raw.headers,
+      });
+      return c.json({ error: "You do not have permission to do that." }, 403);
+    }
     return next();
   });
 
@@ -119,6 +130,7 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
     probeRedis,
   });
   registerAccountRoutes(app);
+  registerActivityRoutes(app);
   registerAdminRoutes(app);
   registerDraftRoutes(app);
   registerContactRoutes(app);

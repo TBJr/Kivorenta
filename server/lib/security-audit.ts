@@ -45,7 +45,10 @@ export function auditEventTypeForAction(action: string): string {
   if (action.includes("role")) return "role";
   if (action.includes("password")) return "password";
   if (action.includes("two_factor") || action.includes("2fa")) return "two_factor";
-  if (action.includes("login") || action.includes("sign_in")) return "authentication";
+  if (action.includes("login") || action.includes("sign_in") || action.includes("sign_out")) {
+    return "authentication";
+  }
+  if (action === "page_viewed" || action.startsWith("page_")) return "activity";
   if (action.includes("mail") || action.includes("mailbox")) return "mailbox";
   return "administration";
 }

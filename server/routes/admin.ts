@@ -19,6 +19,7 @@ import {
 import type { PermissionKey } from "../auth/permissions.js";
 import { userHasPermission } from "../services/access-control.js";
 import { permissionsForUser } from "../services/access-control.js";
+import { recordAccessDeniedAudit } from "../services/access-denied-audit.js";
 import {
   acceptInvitation,
   createDirectUser,
@@ -78,7 +79,16 @@ async function requirePermission(c: Context, permission: PermissionKey) {
     return { response: json(c, { error: accessDeniedMessage() }, 403) };
   }
   const allowed = await userHasPermission(db, account, permission);
-  if (!allowed) return { response: json(c, { error: "You do not have permission to do that." }, 403) };
+  if (!allowed) {
+    void recordAccessDeniedAudit(db, {
+      actorUserId: account.id,
+      actorEmail: account.email,
+      permission,
+      path: c.req.path,
+      headers: c.req.raw.headers,
+    });
+    return { response: json(c, { error: "You do not have permission to do that." }, 403) };
+  }
   return { user: account };
 }
 

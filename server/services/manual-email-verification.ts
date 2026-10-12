@@ -4,6 +4,7 @@ import { parseRoleKeys } from "../auth/permissions.js";
 import type { Database } from "../db/index.js";
 import { adminAuditEvents, appUserAccess, user } from "../db/schema.js";
 import { normalizeEmail } from "../lib/email-normalization.js";
+import { recordAuditEvent } from "./audit-log.js";
 
 export const MANUAL_EMAIL_VERIFICATION_ACTION = "user.email_verified_manually";
 
@@ -177,11 +178,15 @@ export async function manuallyVerifyUserEmail(
         return updated.length === 1;
       },
       writeAudit: async (event) => {
-        await tx.insert(adminAuditEvents).values({
-          id: crypto.randomUUID(),
+        await recordAuditEvent(tx, {
+          action: MANUAL_EMAIL_VERIFICATION_ACTION,
+          category: "USER_MANAGEMENT",
+          eventType: "administration",
+          result: "success",
           actorUserId: event.actorUserId,
           targetUserId: event.targetUserId,
-          action: MANUAL_EMAIL_VERIFICATION_ACTION,
+          resourceType: "user",
+          resourceId: event.targetUserId,
           metadata: manualEmailVerificationAuditMetadata(event.email),
         });
       },

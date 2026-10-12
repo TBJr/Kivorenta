@@ -384,6 +384,14 @@ export async function updateContact(
       });
     }
 
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.contactUpdated,
+      category: "CONTACT",
+      actorUserId: userId,
+      resourceType: "contact",
+      resourceId: row.id,
+    });
+
     return row;
   } catch (error) {
     const pgCode = (error as { code?: string }).code;

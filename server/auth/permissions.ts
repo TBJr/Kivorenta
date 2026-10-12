@@ -238,6 +238,7 @@ export function permissionForRequest(path: string, method: string): PermissionKe
     normalized.startsWith("/api/health") ||
     normalized === "/api/me" ||
     normalized.startsWith("/api/account/") ||
+    normalized.startsWith("/api/activity/") ||
     normalized.startsWith("/api/invitations/accept")
   ) {
     return null;

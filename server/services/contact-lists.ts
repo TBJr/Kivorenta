@@ -2,6 +2,8 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Database } from "../db/index.js";
 import { contactListMembers, contactLists, contacts } from "../db/schema.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
+import { recordAuditEvent } from "./audit-log.js";
 
 export function serializeContactList(
   row: typeof contactLists.$inferSelect,
@@ -65,6 +67,16 @@ export async function createContactList(
         isTestList: input.isTestList ?? false,
       })
       .returning();
+    if (row) {
+      await recordAuditEvent(db, {
+        action: AUDIT_ACTIONS.contactListCreated,
+        category: "RECIPIENT_LIST",
+        actorUserId: userId,
+        resourceType: "contact_list",
+        resourceId: row.id,
+        metadata: { listName: row.name, isTestList: row.isTestList },
+      });
+    }
     return row ?? null;
   } catch (error) {
     const pgCode = (error as { code?: string }).code;
@@ -94,6 +106,18 @@ export async function updateContactList(
       .where(and(eq(contactLists.id, listId), eq(contactLists.userId, userId)))
       .returning();
     if (!row) return null;
+    const nameOrDescriptionChanged =
+      row.name !== existing.name || row.description !== existing.description;
+    if (nameOrDescriptionChanged) {
+      await recordAuditEvent(db, {
+        action: AUDIT_ACTIONS.contactListUpdated,
+        category: "RECIPIENT_LIST",
+        actorUserId: userId,
+        resourceType: "contact_list",
+        resourceId: row.id,
+        metadata: { listName: row.name },
+      });
+    }
     return { row, previousIsTestList: existing.isTestList };
   } catch (error) {
     const pgCode = (error as { code?: string }).code;
@@ -106,8 +130,18 @@ export async function deleteContactList(db: Database, userId: string, listId: st
   const [row] = await db
     .delete(contactLists)
     .where(and(eq(contactLists.id, listId), eq(contactLists.userId, userId)))
-    .returning({ id: contactLists.id });
-  return row ?? null;
+    .returning({ id: contactLists.id, name: contactLists.name });
+  if (row) {
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.contactListDeleted,
+      category: "RECIPIENT_LIST",
+      actorUserId: userId,
+      resourceType: "contact_list",
+      resourceId: row.id,
+      metadata: { listName: row.name },
+    });
+  }
+  return row ? { id: row.id } : null;
 }
 
 export async function listContactsInList(

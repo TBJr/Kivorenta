@@ -1,12 +1,11 @@
-import { parseRoleKeys } from "../auth/permissions.js";
 import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import type { Database } from "../db/index.js";
 import { clientIpFromHeaders, userAgentFromHeaders } from "../lib/request-context.js";
 import { getSessionUser } from "../lib/session.js";
 import { recordAuditEvent } from "./audit-log.js";
 
-const SUCCESS_RULES: Array<{ suffix: string; action: string; eventType: string; privilegedOnly?: boolean }> = [
-  { suffix: "/sign-in/email", action: AUDIT_ACTIONS.authSignIn, eventType: "authentication", privilegedOnly: true },
+const SUCCESS_RULES: Array<{ suffix: string; action: string; eventType: string }> = [
+  { suffix: "/sign-in/email", action: AUDIT_ACTIONS.authSignIn, eventType: "authentication" },
   { suffix: "/sign-out", action: AUDIT_ACTIONS.authSignOut, eventType: "authentication" },
   { suffix: "/two-factor/enable", action: AUDIT_ACTIONS.twoFactorEnabled, eventType: "two_factor" },
   { suffix: "/two-factor/disable", action: AUDIT_ACTIONS.twoFactorDisabled, eventType: "two_factor" },
@@ -42,9 +41,6 @@ export async function recordAuthHandlerAudit(input: {
     if (!rule) return;
     const account = await getSessionUser(input.headers);
     if (!account) return;
-    if (rule.privilegedOnly && !parseRoleKeys((account as { role?: string }).role).includes("super-admin")) {
-      return;
-    }
     await recordAuditEvent(input.db, {
       action: rule.action,
       eventType: rule.eventType,

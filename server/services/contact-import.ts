@@ -2,10 +2,12 @@ import { and, eq } from "drizzle-orm";
 
 import type { Database } from "../db/index.js";
 import { contacts, emailSuppressions } from "../db/schema.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { getCell, parseCsvText } from "../lib/csv-parse.js";
 import { isValidEmail, normalizeEmail } from "../lib/email-normalization.js";
 import { IMPORT_LIMITS } from "../validation/contact-import.js";
 import { CONTACT_LIMITS } from "../validation/contacts.js";
+import { recordAuditEvent } from "./audit-log.js";
 
 export type ColumnMapping = {
   email: string;
@@ -126,6 +128,20 @@ export async function executeCsvImport(
       }
     }
   }
+
+  await recordAuditEvent(db, {
+    action: AUDIT_ACTIONS.contactsImported,
+    category: "CONTACT",
+    actorUserId: userId,
+    resourceType: "contact_import",
+    metadata: {
+      totalRows: results.totalRows,
+      imported: results.imported,
+      duplicates: results.duplicates,
+      invalid: results.invalid,
+      suppressed: results.suppressed,
+    },
+  });
 
   return results;
 }

@@ -15,6 +15,7 @@ export const AUDIT_CATEGORIES = [
   "QUEUE",
   "SETTINGS",
   "ADMINISTRATION",
+  "ACTIVITY",
   "SYSTEM",
 ] as const;
 
@@ -70,6 +71,7 @@ export const AUDIT_ACTIONS = {
   queueSimulationJobFailed: "queue_simulation_job_failed",
   settingsCredentialsUpdated: "settings_credentials_updated",
   adminAccessDenied: "admin_access_denied",
+  pageViewed: "page_viewed",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | string;
@@ -123,6 +125,7 @@ const ACTION_LABELS: Record<string, string> = {
   settings_credentials_updated: "Mailbox credentials updated",
   admin_access_denied: "Administrative access denied",
   manual_email_verified: "Email manually verified",
+  page_viewed: "Page viewed",
 };
 
 export function auditActionLabel(action: string): string {
@@ -144,6 +147,7 @@ export function categoryForAction(action: string): AuditCategory {
   if (action.startsWith("campaign_")) return "CAMPAIGN";
   if (action.startsWith("queue_")) return "QUEUE";
   if (action.includes("settings") || action.includes("credentials")) return "SETTINGS";
+  if (action === "page_viewed" || action.startsWith("page_")) return "ACTIVITY";
   if (action === "admin_access_denied") return "ADMINISTRATION";
   return "ADMINISTRATION";
 }

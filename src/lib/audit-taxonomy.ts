@@ -14,5 +14,6 @@ export const AUDIT_CATEGORIES = [
   "QUEUE",
   "SETTINGS",
   "ADMINISTRATION",
+  "ACTIVITY",
   "SYSTEM",
 ] as const;
