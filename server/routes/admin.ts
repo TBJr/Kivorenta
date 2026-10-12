@@ -9,6 +9,13 @@ import { createUserSchema, manualEmailVerificationSchema } from "../validation/a
 import { loadAccountSecurityState } from "../lib/account-security.js";
 import { getSessionUser } from "../lib/session.js";
 import { manuallyVerifyUserEmail } from "../services/manual-email-verification.js";
+import {
+  auditListQuerySchema,
+  enrichAuditActors,
+  getAuditEvent,
+  getAuditSummary,
+  listAuditEvents,
+} from "../services/audit-log.js";
 import type { PermissionKey } from "../auth/permissions.js";
 import { userHasPermission } from "../services/access-control.js";
 import { permissionsForUser } from "../services/access-control.js";
@@ -21,7 +28,6 @@ import {
   getAdminUser,
   getRole,
   listAdminUsers,
-  listAudit,
   listInvitations,
   listPermissionCatalog,
   listRoles,
@@ -260,27 +266,42 @@ export function registerAdminRoutes(app: Hono) {
     return json(c, result);
   });
 
+  app.get("/api/admin/audit/summary", async (c) => {
+    const access = await requirePermission(c, "audit.read");
+    if ("response" in access) return access.response;
+    return json(c, await getAuditSummary(db));
+  });
+
+  app.get("/api/admin/audit/:eventId", async (c) => {
+    const access = await requirePermission(c, "audit.read");
+    if ("response" in access) return access.response;
+    const event = await getAuditEvent(db, c.req.param("eventId"));
+    if (!event) return json(c, { error: "Audit event not found." }, 404);
+    const [enriched] = await enrichAuditActors(db, [event]);
+    return json(c, { event: enriched });
+  });
+
   app.get("/api/admin/audit", async (c) => {
     const access = await requirePermission(c, "audit.read");
     if ("response" in access) return access.response;
-    const page = Number(c.req.query("page") ?? "1");
-    const limit = Number(c.req.query("limit") ?? "25");
-    const fromRaw = c.req.query("from");
-    const toRaw = c.req.query("to");
-    const from = fromRaw ? new Date(fromRaw) : undefined;
-    const to = toRaw ? new Date(toRaw) : undefined;
-    return json(
-      c,
-      await listAudit(db, {
-        page: page > 0 ? page : 1,
-        limit: Math.min(50, limit > 0 ? limit : 25),
-        action: c.req.query("action") ?? undefined,
-        eventType: c.req.query("eventType") ?? undefined,
-        actorUserId: c.req.query("actorUserId") ?? undefined,
-        from: from && !Number.isNaN(from.getTime()) ? from : undefined,
-        to: to && !Number.isNaN(to.getTime()) ? to : undefined,
-      }),
-    );
+    const parsed = auditListQuerySchema.safeParse({
+      page: c.req.query("page"),
+      limit: c.req.query("limit"),
+      action: c.req.query("action"),
+      eventType: c.req.query("eventType"),
+      category: c.req.query("category"),
+      result: c.req.query("result"),
+      actorUserId: c.req.query("actorUserId"),
+      resourceType: c.req.query("resourceType"),
+      resourceId: c.req.query("resourceId"),
+      q: c.req.query("q"),
+      from: c.req.query("from"),
+      to: c.req.query("to"),
+    });
+    if (!parsed.success) return json(c, validationError(parsed.error), 400);
+    const listed = await listAuditEvents(db, parsed.data);
+    const events = await enrichAuditActors(db, listed.events);
+    return json(c, { ...listed, events });
   });
 
   app.post("/api/invitations/accept", async (c) => {

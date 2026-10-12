@@ -20,6 +20,9 @@ import { sendControlledTest } from "../services/mail-test-send.js";
 import { sendIndividualEmail } from "../services/individual-send.js";
 import { listIndividualSubmissions } from "../services/individual-send-records.js";
 import { toPublicIndividualSend } from "../mail/individual-send-public.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
+import { clientIpFromRequest, userAgentFromRequest } from "../lib/request-context.js";
+import { recordAuditEvent } from "../services/audit-log.js";
 import { mailboxFolderSchema, mailPageQuerySchema, mailUidSchema, testSendSchema, individualSendSchema, individualSendListQuerySchema } from "../validation/mail.js";
 
 const env = loadEnv();
@@ -168,6 +171,54 @@ export function registerMailRoutes(app: Hono) {
       ...parsed.data,
       draftId: parsed.data.draftId ?? null,
     });
+
+    const auditCtx = {
+      ipAddress: clientIpFromRequest(c),
+      userAgent: userAgentFromRequest(c),
+    };
+    const recipientCount =
+      parsed.data.to.length + parsed.data.cc.length + parsed.data.bcc.length;
+    if (outcome.kind === "accepted" || outcome.kind === "rejected" || outcome.kind === "failed" || outcome.kind === "uncertain") {
+      const action =
+        outcome.kind === "accepted"
+          ? AUDIT_ACTIONS.emailSmtpAccepted
+          : outcome.kind === "rejected"
+            ? AUDIT_ACTIONS.emailSmtpRejected
+            : AUDIT_ACTIONS.emailSmtpFailed;
+      try {
+        await recordAuditEvent(db, {
+          action,
+          category: "EMAIL",
+          actorUserId: access.user.id,
+          actorEmail: access.user.email,
+          resourceType: "email_submission",
+          resourceId: outcome.submission.id,
+          result: outcome.kind === "accepted" ? "success" : "failure",
+          metadata: {
+            recipientCount,
+            status: outcome.submission.status,
+            errorCode: outcome.submission.errorCode ?? null,
+          },
+          requestContext: auditCtx,
+        });
+      } catch (error) {
+        console.error("[audit] mail send", error instanceof Error ? error.message : "unknown");
+      }
+    } else if (outcome.kind !== "not_configured" && outcome.kind !== "invalid" && outcome.kind !== "forbidden_draft" && outcome.kind !== "rate_limited") {
+      try {
+        await recordAuditEvent(db, {
+          action: AUDIT_ACTIONS.emailSendRequested,
+          category: "EMAIL",
+          actorUserId: access.user.id,
+          resourceType: "email_submission",
+          resourceId: outcome.submission.id,
+          metadata: { recipientCount, duplicate: outcome.kind === "duplicate" },
+          requestContext: auditCtx,
+        });
+      } catch {
+        /* non-blocking */
+      }
+    }
     if (outcome.kind === "not_configured") {
       return json(c, { error: "Email account is not configured on the server." }, 503);
     }

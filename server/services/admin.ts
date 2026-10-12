@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { and, count, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
 
 import { loadEnv } from "../env.js";
 import { auth } from "../auth/auth.js";
@@ -25,7 +25,7 @@ import {
 } from "../db/schema.js";
 import { sendTransactionalEmail } from "../lib/email.js";
 import { validatePassword } from "../lib/password-policy.js";
-import { auditEventTypeForAction, sanitizeAuditMetadata, type AuditResult } from "../lib/security-audit.js";
+import { recordAudit } from "./audit-log.js";
 import { withPgAdvisoryLock } from "../mail/lock.js";
 import { permissionsForUser } from "./access-control.js";
 import { latestManualVerification, verificationView } from "./manual-email-verification.js";
@@ -45,31 +45,7 @@ function roleIdFor(key: string) {
   return `role_${key}`;
 }
 
-export async function recordAudit(
-  db: Database,
-  input: {
-    actorUserId: string | null;
-    targetUserId?: string | null;
-    action: string;
-    eventType?: string;
-    result?: AuditResult;
-    ipAddress?: string | null;
-    userAgent?: string | null;
-    metadata?: Record<string, unknown>;
-  },
-) {
-  await db.insert(adminAuditEvents).values({
-    id: crypto.randomUUID(),
-    actorUserId: input.actorUserId,
-    targetUserId: input.targetUserId ?? null,
-    action: input.action,
-    eventType: input.eventType ?? auditEventTypeForAction(input.action),
-    result: input.result ?? "success",
-    ipAddress: input.ipAddress ?? null,
-    userAgent: input.userAgent ?? null,
-    metadata: sanitizeAuditMetadata(input.metadata),
-  });
-}
+export { recordAudit } from "./audit-log.js";
 
 async function rolePermissionMap(db: Database) {
   const rows = await db
@@ -692,55 +668,6 @@ export async function acceptInvitation(db: Database, account: { id: string; emai
     metadata: { roles: invite.roleKeys },
   });
   return { ok: true as const };
-}
-
-export async function listAudit(
-  db: Database,
-  query: {
-    page: number;
-    limit: number;
-    action?: string;
-    eventType?: string;
-    actorUserId?: string;
-    from?: Date;
-    to?: Date;
-  },
-) {
-  const filters = [];
-  if (query.action) filters.push(eq(adminAuditEvents.action, query.action));
-  if (query.eventType) filters.push(eq(adminAuditEvents.eventType, query.eventType));
-  if (query.actorUserId) filters.push(eq(adminAuditEvents.actorUserId, query.actorUserId));
-  if (query.from) filters.push(gte(adminAuditEvents.createdAt, query.from));
-  if (query.to) filters.push(lte(adminAuditEvents.createdAt, query.to));
-
-  const where = filters.length ? and(...filters) : undefined;
-  const rows = await db
-    .select()
-    .from(adminAuditEvents)
-    .where(where)
-    .orderBy(desc(adminAuditEvents.createdAt))
-    .limit(query.limit)
-    .offset((query.page - 1) * query.limit);
-  const [totalRow] = await db.select({ total: count() }).from(adminAuditEvents).where(where);
-  return {
-    events: rows.map((row) => ({
-      id: row.id,
-      action: row.action,
-      eventType: row.eventType,
-      result: row.result,
-      actorUserId: row.actorUserId,
-      targetUserId: row.targetUserId,
-      ipAddress: row.ipAddress,
-      metadata: row.metadata ?? {},
-      createdAt: row.createdAt.toISOString(),
-    })),
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total: Number(totalRow?.total ?? 0),
-      totalPages: Math.max(1, Math.ceil(Number(totalRow?.total ?? 0) / query.limit)),
-    },
-  };
 }
 
 const DIRECT_CREATE_HOURLY_LIMIT = 10;

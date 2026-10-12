@@ -12,7 +12,7 @@ import { validationError } from "../lib/http-errors.js";
 import { validatePassword } from "../lib/password-policy.js";
 import { clientIpFromRequest, userAgentFromRequest } from "../lib/request-context.js";
 import { getSessionUser } from "../lib/session.js";
-import { recordAudit } from "../services/admin.js";
+import { recordAudit } from "../services/audit-log.js";
 
 const env = loadEnv();
 const { db } = createDb(env);

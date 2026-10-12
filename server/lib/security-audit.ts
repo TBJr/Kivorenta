@@ -9,7 +9,17 @@ const SENSITIVE_METADATA_KEYS = new Set([
   "totp",
   "otp",
   "smtpPass",
+  "smtp_pass",
+  "SPACEMAIL_PASSWORD",
   "apiKey",
+  "authorization",
+  "cookie",
+  "session",
+  "idempotencyKey",
+  "contentJson",
+  "bodyHtml",
+  "bodyText",
+  "raw",
 ]);
 
 export type AuditResult = "success" | "failure";

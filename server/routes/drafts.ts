@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createDb } from "../db/index.js";
 import { loadEnv } from "../env.js";
 import { getSessionUser } from "../lib/session.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import {
   createEmailDraft,
   deleteEmailDraft,
@@ -12,6 +13,7 @@ import {
   serializeDraft,
   updateEmailDraft,
 } from "../services/drafts.js";
+import { recordAuditEvent } from "../services/audit-log.js";
 import {
   createDraftSchema,
   draftIdParamSchema,
@@ -53,6 +55,13 @@ export function registerDraftRoutes(app: Hono) {
 
     try {
       const row = await createEmailDraft(db, user.id, parsed.data);
+      await recordAuditEvent(db, {
+        action: AUDIT_ACTIONS.draftCreated,
+        category: "DRAFT",
+        actorUserId: user.id,
+        resourceType: "draft",
+        resourceId: row.id,
+      });
       return c.json({ draft: serializeDraft(row) }, 201);
     } catch (error) {
       if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE") {
@@ -132,6 +141,13 @@ export function registerDraftRoutes(app: Hono) {
       if (!row) {
         return c.json({ error: "Draft not found" }, 404);
       }
+      await recordAuditEvent(db, {
+        action: AUDIT_ACTIONS.draftUpdated,
+        category: "DRAFT",
+        actorUserId: user.id,
+        resourceType: "draft",
+        resourceId: row.id,
+      });
       return c.json({ draft: serializeDraft(row) });
     } catch (error) {
       if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE") {
@@ -156,6 +172,14 @@ export function registerDraftRoutes(app: Hono) {
     if (!deleted) {
       return c.json({ error: "Draft not found" }, 404);
     }
+
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.draftDeleted,
+      category: "DRAFT",
+      actorUserId: user.id,
+      resourceType: "draft",
+      resourceId: params.data.id,
+    });
 
     return c.json({ ok: true });
   });

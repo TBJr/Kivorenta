@@ -10,7 +10,9 @@ import {
 } from "../db/schema.js";
 import { getAppName } from "../lib/brand.js";
 import { isValidEmail, normalizeEmail } from "../lib/email-normalization.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import type { SubscriptionStatus } from "../validation/contacts.js";
+import { recordAuditEvent } from "./audit-log.js";
 
 export type ContactRow = typeof contacts.$inferSelect;
 
@@ -296,6 +298,14 @@ export async function createContact(
       });
     }
 
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.contactCreated,
+      category: "CONTACT",
+      actorUserId: userId,
+      resourceType: "contact",
+      resourceId: row.id,
+    });
+
     return row;
   } catch (error) {
     if (error instanceof Error && error.message.includes("unique")) {
@@ -389,6 +399,15 @@ export async function deleteContact(db: Database, userId: string, contactId: str
     .delete(contacts)
     .where(and(eq(contacts.id, contactId), eq(contacts.userId, userId)))
     .returning({ id: contacts.id });
+  if (row) {
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.contactDeleted,
+      category: "CONTACT",
+      actorUserId: userId,
+      resourceType: "contact",
+      resourceId: row.id,
+    });
+  }
   return row ?? null;
 }
 

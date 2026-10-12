@@ -1,5 +1,6 @@
 import type { Database } from "../db/index.js";
 import { queueEvents } from "../db/schema.js";
+import { mirrorQueueEventToAudit } from "./queue-audit-mirror.js";
 
 export type QueueEventType =
   | "campaign_enqueued"
@@ -35,6 +36,12 @@ export async function recordQueueEvent(
     eventType: input.eventType,
     metadata: input.metadata,
   });
+
+  try {
+    await mirrorQueueEventToAudit(db, input);
+  } catch (error) {
+    console.error("[audit] queue mirror failed", error instanceof Error ? error.message : "unknown");
+  }
 }
 
 export function serializeQueueEvent(row: typeof queueEvents.$inferSelect) {

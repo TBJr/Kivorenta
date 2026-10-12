@@ -7,7 +7,9 @@ import {
   deliveryJobs,
   queueEvents,
 } from "../db/schema.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { recordCampaignEvent } from "./campaign-audit.js";
+import { recordAuditEvent } from "./audit-log.js";
 import { validateCampaignContentFields } from "./campaign-content.js";
 import {
   getCampaignById,
@@ -360,6 +362,22 @@ export async function updateCampaignSimulationProgress(db: Database, campaignId:
       .update(campaigns)
       .set({ status: nextStatus, updatedAt: new Date() })
       .where(eq(campaigns.id, campaignId));
+    try {
+      await recordAuditEvent(db, {
+        action:
+          failed > 0
+            ? AUDIT_ACTIONS.campaignSimulationFailed
+            : AUDIT_ACTIONS.campaignSimulationCompleted,
+        category: "CAMPAIGN",
+        actorType: "worker",
+        resourceType: "campaign",
+        resourceId: campaignId,
+        result: failed > 0 ? "failure" : "success",
+        metadata: { simulationOnly: true, failedJobs: failed, totalJobs: total },
+      });
+    } catch (error) {
+      console.error("[audit] campaign simulation summary failed", error instanceof Error ? error.message : "unknown");
+    }
   }
 }
 
