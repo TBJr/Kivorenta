@@ -86,8 +86,7 @@ export function registerMailRoutes(app: Hono) {
   app.get("/api/mail/test-lists", async (c) => {
     const access = await requireMailbox(c, "mailbox.send_test");
     if ("response" in access) return access.response;
-    const ownerId = resolveRecipientOwnerId(access.user);
-    const lists = await listDesignatedTestLists(db, ownerId);
+    const lists = await listDesignatedTestLists(db, access.user);
     return json(c, { lists, limit: testMessageListRecipientLimit() });
   });
 
@@ -127,7 +126,7 @@ export function registerMailRoutes(app: Hono) {
             ipAddress: clientIpFromRequest(c),
             userAgent: userAgentFromRequest(c),
           },
-          resolveRecipientOwnerId(access.user),
+          access.user.role,
         );
         if (outcome.kind === "not_configured") {
           return json(c, { error: "Email account is not configured on the server.", code: "smtp_unavailable" }, 503);
@@ -178,7 +177,15 @@ export function registerMailRoutes(app: Hono) {
         if (error instanceof MailboxError) {
           return json(c, { error: error.message, code: publicSmtpCode(error) }, error.status);
         }
-        throw error;
+        console.error(
+          "[mail] test list send failed",
+          error instanceof Error ? error.name : "error",
+        );
+        return json(
+          c,
+          { error: "The test message could not be sent.", code: "test_send_failed" },
+          500,
+        );
       }
     }
 

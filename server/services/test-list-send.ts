@@ -11,6 +11,7 @@ import {
 } from "../db/schema.js";
 import { normalizeEmail } from "../lib/email-normalization.js";
 import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
+import { resolveRecipientOwnerId } from "../lib/org-workspace.js";
 import { MailboxError } from "../mail/errors.js";
 import { saveSentCopy } from "../mail/imap.js";
 import { withPgAdvisoryLock, type MailLock } from "../mail/lock.js";
@@ -164,26 +165,58 @@ async function loadOwnedTestList(db: Database, userId: string, listId: string) {
     userId,
     candidates.map((candidate) => normalizeEmail(candidate.email)),
   );
-  return { list, plan: planTestListRecipients(candidates, suppressed) };
+  return { list, plan: planTestListRecipients(candidates, suppressed), ownerId: userId };
 }
 
-export async function listDesignatedTestLists(db: Database, userId: string): Promise<TestListOption[]> {
-  const testLists = await db
-    .select()
-    .from(contactLists)
-    .where(and(eq(contactLists.userId, userId), eq(contactLists.isTestList, true)));
+/** Owners to search for designated test lists for this actor (shared pool + own id). */
+export function testListOwnerIdsForActor(actor: { id: string; role?: string | null }): string[] {
+  const primary = resolveRecipientOwnerId(actor);
+  if (primary === actor.id) return [actor.id];
+  return [primary, actor.id];
+}
 
-  const options: TestListOption[] = [];
-  for (const list of testLists) {
-    const loaded = await loadOwnedTestList(db, userId, list.id);
-    if ("error" in loaded) continue;
-    options.push({
-      id: list.id,
-      name: list.name,
-      memberCount: loaded.plan.requested,
-      eligibleCount: loaded.plan.eligible.length,
-    });
+async function resolveOwnedTestList(
+  db: Database,
+  actor: { id: string; role?: string | null },
+  listId: string,
+) {
+  let sawNotTestList = false;
+  for (const ownerId of testListOwnerIdsForActor(actor)) {
+    const loaded = await loadOwnedTestList(db, ownerId, listId);
+    if (!("error" in loaded)) return loaded;
+    if (loaded.error === "not_test_list") sawNotTestList = true;
   }
+  return { error: sawNotTestList ? ("not_test_list" as const) : ("not_found" as const) };
+}
+
+export async function listDesignatedTestLists(
+  db: Database,
+  actor: { id: string; role?: string | null },
+): Promise<TestListOption[]> {
+  const ownerIds = testListOwnerIdsForActor(actor);
+  const seen = new Set<string>();
+  const options: TestListOption[] = [];
+
+  for (const ownerId of ownerIds) {
+    const testLists = await db
+      .select()
+      .from(contactLists)
+      .where(and(eq(contactLists.userId, ownerId), eq(contactLists.isTestList, true)));
+
+    for (const list of testLists) {
+      if (seen.has(list.id)) continue;
+      const loaded = await loadOwnedTestList(db, ownerId, list.id);
+      if ("error" in loaded) continue;
+      seen.add(list.id);
+      options.push({
+        id: list.id,
+        name: list.name,
+        memberCount: loaded.plan.requested,
+        eligibleCount: loaded.plan.eligible.length,
+      });
+    }
+  }
+
   return options.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -211,7 +244,7 @@ export async function sendDesignatedTestList(
   userId: string,
   input: TestListSendInput,
   audit: TestListAuditContext = {},
-  recipientOwnerId = userId,
+  actorRole?: string | null,
 ): Promise<TestListSendOutcome> {
   const loadedConfig = loadMailConfig();
   if (!loadedConfig.ok) {
@@ -220,7 +253,6 @@ export async function sendDesignatedTestList(
   }
   const config = loadedConfig.config;
   const limit = testMessageListRecipientLimit();
-  const listOwnerId = recipientOwnerId;
 
   return withPgAdvisoryLock(db, `mail-test-list:${input.idempotencyKey}`, async () => {
     await expireStalePendingSubmissions(db);
@@ -241,12 +273,14 @@ export async function sendDesignatedTestList(
     let planSuppressed = existing?.suppressedCount ?? 0;
     let planSkipped = existing?.skippedCount ?? 0;
     let snapshot: FrozenRecipient[] = existing?.recipientSnapshot ?? [];
+    let listOwnerId = resolveRecipientOwnerId({ id: userId, role: actorRole });
 
     if (!operation) {
-      const loaded = await loadOwnedTestList(db, listOwnerId, input.testListId);
+      const loaded = await resolveOwnedTestList(db, { id: userId, role: actorRole }, input.testListId);
       if ("error" in loaded) {
         return loaded.error === "not_found" ? { kind: "not_found" } : { kind: "not_test_list" };
       }
+      listOwnerId = loaded.ownerId;
       const eligibleCount = loaded.plan.eligible.length;
       if (eligibleCount > limit) {
         return { kind: "over_limit", eligible: eligibleCount, limit };
@@ -324,6 +358,13 @@ export async function sendDesignatedTestList(
       }).catch((error) => {
         console.error("[audit] test list request", error instanceof Error ? error.name : "error");
       });
+    } else {
+      const owned = await resolveOwnedTestList(
+        db,
+        { id: userId, role: actorRole },
+        operation.listId ?? input.testListId,
+      );
+      if (!("error" in owned)) listOwnerId = owned.ownerId;
     }
 
     const recorded = await db

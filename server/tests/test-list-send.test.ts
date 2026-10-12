@@ -6,6 +6,7 @@ import { sanitizeAuditMetadata } from "../lib/security-audit.js";
 import { testSendSchema } from "../validation/mail.js";
 import { explainApiError } from "../../src/lib/mail-user-errors.js";
 import { describeRouteFailure, isStaleAssetError } from "../../src/lib/route-error.js";
+import { ORG_WORKSPACE_USER_ID } from "../lib/org-workspace.js";
 import {
   buildTestListSummary,
   claimedSubmissionAction,
@@ -16,6 +17,7 @@ import {
   testMessageListRecipientLimit,
   type FrozenRecipient,
 } from "../services/test-list-plan.js";
+import { testListOwnerIdsForActor } from "../services/test-list-send.js";
 
 const message = {
   subject: "Complete Your Registration",
@@ -63,6 +65,33 @@ describe("recipient submission claims", () => {
     expect(claimedSubmissionAction(false, "pending")).toBe("unknown");
     expect(claimedSubmissionAction(false, "accepted")).toBe("accepted");
     expect(claimedSubmissionAction(false, null)).toBe("unknown");
+  });
+});
+
+describe("test list owner resolution", () => {
+  const actorOwned = { id: "list-actor", userId: "sa-1", name: "Pre-migration QA" };
+  const workspaceOwned = { id: "list-ws", userId: ORG_WORKSPACE_USER_ID, name: "Shared QA" };
+  const editorOwned = { id: "list-ed", userId: "editor-1", name: "Editor QA" };
+  const catalog = [actorOwned, workspaceOwned, editorOwned];
+
+  function listsForActor(actor: { id: string; role?: string | null }) {
+    const owners = new Set(testListOwnerIdsForActor(actor));
+    return catalog.filter((list) => owners.has(list.userId)).map((list) => list.id);
+  }
+
+  it("lets a super-admin find pre-migration actor-owned and workspace lists", () => {
+    const owners = testListOwnerIdsForActor({ id: "sa-1", role: "super-admin" });
+    expect(owners).toEqual([ORG_WORKSPACE_USER_ID, "sa-1"]);
+    expect(listsForActor({ id: "sa-1", role: "super-admin" })).toEqual([
+      "list-actor",
+      "list-ws",
+    ]);
+  });
+
+  it("keeps editors on their own lists without the workspace pool", () => {
+    expect(testListOwnerIdsForActor({ id: "editor-1", role: "editor" })).toEqual(["editor-1"]);
+    expect(listsForActor({ id: "editor-1", role: "editor" })).toEqual(["list-ed"]);
+    expect(listsForActor({ id: "editor-1", role: "editor" })).not.toContain("list-ws");
   });
 });
 
@@ -188,5 +217,12 @@ describe("safe application errors", () => {
     expect(explainApiError({ code: "smtp_authentication_failed" })).toContain("authenticate");
     expect(explainApiError({ code: "test_list_too_large", message: "This test list has 12 eligible recipients. Test sends are limited to 8." })).toContain("limited to 8");
     expect(explainApiError({ message: "connect ETIMEDOUT postgres://user:secret@host/db", status: 500 })).not.toContain("secret");
+    expect(
+      explainApiError({
+        code: "test_send_failed",
+        message: "The test message could not be sent.",
+        status: 500,
+      }),
+    ).toBe("The test message could not be sent.");
   });
 });
