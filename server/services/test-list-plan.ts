@@ -1,4 +1,4 @@
-import { MailboxError } from "../mail/errors.js";
+import { MailboxError, smtpFailureCategory, type SmtpFailureCategory } from "../mail/errors.js";
 import {
   buildEligibilitySnapshot,
   type ContactCandidate,
@@ -24,7 +24,7 @@ export type TestListPlan = {
 export type RecipientAttempt = {
   contactId: string;
   email: string;
-  outcome: "accepted" | "rejected" | "failed" | "suppressed";
+  outcome: "accepted" | "rejected" | "failed" | "suppressed" | "unknown";
 };
 
 export type TestListSummary = {
@@ -36,9 +36,27 @@ export type TestListSummary = {
   failed: number;
   suppressed: number;
   skipped: number;
+  unknown: number;
+  notAttempted: number;
+  failureCategory: SmtpFailureCategory | null;
   status: "completed" | "failed";
   message: string | null;
 };
+
+/**
+ * A row this request inserted may be submitted. An existing row, including one
+ * still pending after a crash or a concurrent request, must not be submitted again.
+ */
+export function claimedSubmissionAction(
+  inserted: boolean,
+  status: string | null,
+): "send" | RecipientAttempt["outcome"] {
+  if (inserted) return "send";
+  if (status === "accepted" || status === "rejected" || status === "failed" || status === "suppressed" || status === "unknown") {
+    return status;
+  }
+  return "unknown";
+}
 
 export function testMessageListRecipientLimit(env: NodeJS.ProcessEnv = process.env) {
   const raw = env.TEST_MESSAGE_MAX_LIST_RECIPIENTS?.trim();
@@ -91,9 +109,14 @@ export async function sendEligibleRecipients(options: {
   recipients: FrozenRecipient[];
   alreadyRecorded: Set<string>;
   sendOne: (recipient: FrozenRecipient) => Promise<RecipientAttempt["outcome"]>;
-}): Promise<{ attempts: RecipientAttempt[]; sharedFailure: string | null }> {
+}): Promise<{
+  attempts: RecipientAttempt[];
+  sharedFailure: string | null;
+  failureCategory: SmtpFailureCategory | null;
+}> {
   const attempts: RecipientAttempt[] = [];
   let sharedFailure: string | null = null;
+  let failureCategory: SmtpFailureCategory | null = null;
 
   for (const recipient of options.recipients) {
     if (options.alreadyRecorded.has(recipient.contactId)) continue;
@@ -103,13 +126,15 @@ export async function sendEligibleRecipients(options: {
     } catch (error) {
       if (isSharedSmtpFailure(error)) {
         sharedFailure = error instanceof Error ? error.message : "The outgoing mail server could not complete the request.";
+        failureCategory = smtpFailureCategory(error);
+        attempts.push({ contactId: recipient.contactId, email: recipient.email, outcome: "unknown" });
         break;
       }
       attempts.push({ contactId: recipient.contactId, email: recipient.email, outcome: "failed" });
     }
   }
 
-  return { attempts, sharedFailure };
+  return { attempts, sharedFailure, failureCategory };
 }
 
 export function buildTestListSummary(input: {
@@ -122,6 +147,9 @@ export function buildTestListSummary(input: {
   attempts: RecipientAttempt[];
   priorAccepted?: number;
   priorFailed?: number;
+  priorUnknown?: number;
+  notAttempted?: number;
+  failureCategory?: SmtpFailureCategory | null;
   sharedFailure: string | null;
 }): TestListSummary {
   const smtpAccepted =
@@ -131,6 +159,8 @@ export function buildTestListSummary(input: {
     input.attempts.filter((attempt) => attempt.outcome === "rejected" || attempt.outcome === "failed").length;
   const suppressed =
     input.suppressed + input.attempts.filter((attempt) => attempt.outcome === "suppressed").length;
+  const unknown =
+    (input.priorUnknown ?? 0) + input.attempts.filter((attempt) => attempt.outcome === "unknown").length;
   return {
     listId: input.listId,
     listName: input.listName,
@@ -140,6 +170,9 @@ export function buildTestListSummary(input: {
     failed,
     suppressed,
     skipped: input.skipped,
+    unknown,
+    notAttempted: input.notAttempted ?? 0,
+    failureCategory: input.failureCategory ?? null,
     status: input.sharedFailure ? "failed" : "completed",
     message: input.sharedFailure,
   };
@@ -155,6 +188,9 @@ export function testListAuditMetadata(summary: TestListSummary) {
     failedCount: summary.failed,
     suppressedCount: summary.suppressed,
     skippedCount: summary.skipped,
+    unknownCount: summary.unknown,
+    notAttemptedCount: summary.notAttempted,
+    failureCategory: summary.failureCategory,
   };
 }
 

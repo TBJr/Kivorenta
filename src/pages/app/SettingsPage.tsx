@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   AlertDialog,
@@ -18,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichTextEditor } from "@/components/composer/RichTextEditor";
 import { PageMeta } from "@/components/layout/PageMeta";
+import { useAppNotice } from "@/components/notices/AppNotice";
 import { AppPageContainer } from "@/components/shared/AppPageContainer";
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
@@ -34,6 +36,16 @@ import {
   type TestListOption,
   type TestListSummary,
 } from "@/lib/mail-api";
+import {
+  canSubmitTestSend,
+  destinationAfterTestSend,
+  sentListRefreshState,
+  singleTestSendFollowUp,
+  testListFollowUp,
+  testListResultHeading,
+  testSendBusyLabel,
+  thrownTestSendFollowUp,
+} from "@/lib/test-send-follow-up";
 import { EMPTY_TIPTAP_DOC, processDraftContent, type TiptapDoc } from "@/lib/message-content";
 
 function formatWhen(value: string | null) {
@@ -64,6 +76,9 @@ function submissionLabel(submission: MailSubmission) {
 }
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const { notify } = useAppNotice();
+  const inFlight = useRef(false);
   const [status, setStatus] = useState<MailStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
@@ -145,53 +160,60 @@ export function SettingsPage() {
   }
 
   async function submitTest() {
-    if (!idempotencyKey) return;
+    if (!idempotencyKey || !canSubmitTestSend({ inFlight: inFlight.current, idempotencyKey })) return;
+    const requestKey = idempotencyKey;
+    inFlight.current = true;
     setSending(true);
     setSendError(null);
+    setSubmission(null);
+    setListSummary(null);
+    setDuplicate(false);
     try {
       const message = processDraftContent(contentJson);
+      const payload = {
+        subject: subject.trim(),
+        text: message.bodyText,
+        html: message.bodyHtml,
+        confirm: true as const,
+        idempotencyKey: requestKey,
+      };
+      let followUp;
       if (recipientMode === "test_list") {
-        const result = await sendMailTestList({
-          subject: subject.trim(),
-          text: message.bodyText,
-          html: message.bodyHtml,
-          testListId: selectedListId,
-          confirm: true,
-          idempotencyKey,
-        });
+        const result = await sendMailTestList({ ...payload, testListId: selectedListId });
         setListSummary(result.summary);
         setDuplicate(result.duplicate);
+        followUp = testListFollowUp(result.summary, result.duplicate);
       } else {
-        const result = await sendMailTest({
-          subject: subject.trim(),
-          text: message.bodyText,
-          html: message.bodyHtml,
-          testRecipient: selectedTestRecipient,
-          confirm: true,
-          idempotencyKey,
-        });
+        const result = await sendMailTest({ ...payload, testRecipient: selectedTestRecipient });
         setSubmission(result.submission);
         setDuplicate(result.duplicate);
+        followUp = singleTestSendFollowUp(result.submission, result.duplicate);
       }
       setIdempotencyKey(null);
       setAcknowledged(false);
       setConfirmOpen(false);
+      notify(followUp);
+      const destination = destinationAfterTestSend("settled", followUp);
+      if (destination) {
+        navigate(destination, { state: sentListRefreshState(crypto.randomUUID()) });
+      }
     } catch (error) {
+      const followUp =
+        error instanceof MailApiError
+          ? thrownTestSendFollowUp({ message: error.message, status: error.status, code: error.code })
+          : thrownTestSendFollowUp(null);
       if (error instanceof MailApiError) {
         const recorded = submissionFromError(error);
         if (recorded) setSubmission(recorded);
-        setSendError(error.message);
         if (error.status !== 409) {
           setIdempotencyKey(null);
           setAcknowledged(false);
           setConfirmOpen(false);
         }
-      } else {
-        setSendError(
-          "The request did not finish. Confirm again to retry this same test. If it already went through, the same request will not send a second message.",
-        );
       }
+      setSendError(followUp.message);
     } finally {
+      inFlight.current = false;
       setSending(false);
     }
   }
@@ -210,6 +232,10 @@ export function SettingsPage() {
     subject.trim().length > 0 &&
     messagePreview.bodyText.trim().length > 0 &&
     !sending;
+  const busyLabel = testSendBusyLabel(
+    recipientMode,
+    recipientMode === "test_list" ? (selectedList?.eligibleCount ?? 0) : 1,
+  );
 
   return (
     <>
@@ -372,15 +398,22 @@ export function SettingsPage() {
                           </select>
                         ) : (
                           <p className="text-sm text-muted-foreground">
-                            No test lists yet. Mark a recipient list as a test list first.
+                            No test lists are available yet. Mark a recipient list as a test list before sending.
                           </p>
                         )}
-                        {selectedList ? (
+                        {selectedList && selectedList.eligibleCount === 0 ? (
                           <p className="text-sm text-muted-foreground">
-                            {selectedList.eligibleCount} eligible recipient{selectedList.eligibleCount === 1 ? "" : "s"}
-                            {selectedList.eligibleCount > listLimit
-                              ? `. The safety limit is ${listLimit}.`
-                              : "."}
+                            This test list does not currently contain any eligible recipients.
+                          </p>
+                        ) : null}
+                        {selectedList && selectedList.eligibleCount > listLimit ? (
+                          <p className="text-sm text-destructive">
+                            This test list has {selectedList.eligibleCount} eligible recipients. Test sends are limited to {listLimit}.
+                          </p>
+                        ) : null}
+                        {selectedList && selectedList.eligibleCount > 0 && selectedList.eligibleCount <= listLimit ? (
+                          <p className="text-sm text-muted-foreground">
+                            {selectedList.eligibleCount} eligible recipient{selectedList.eligibleCount === 1 ? "" : "s"}.
                           </p>
                         ) : null}
                       </div>
@@ -426,12 +459,8 @@ export function SettingsPage() {
                         {sendError}
                       </p>
                     ) : null}
-                    <Button type="submit" disabled={!canSend}>
-                      {sending
-                        ? "Sending…"
-                        : recipientMode === "test_list"
-                          ? "Send test messages"
-                          : "Review test message"}
+                    <Button type="submit" disabled={!canSend} aria-busy={sending}>
+                      {sending ? busyLabel : recipientMode === "test_list" ? "Send test messages" : "Review test message"}
                     </Button>
                   </form>
                 ) : (
@@ -445,20 +474,19 @@ export function SettingsPage() {
             {listSummary ? (
               <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle>Test send complete</CardTitle>
+                  <CardTitle>{testListResultHeading(listSummary)}</CardTitle>
                   <CardDescription>Test list: {listSummary.listName}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm" role="status">
-                  {duplicate ? <p>This request was already submitted. No additional messages were sent.</p> : null}
-                  <p>Eligible recipients: {listSummary.eligible}</p>
+                  <p>{testListFollowUp(listSummary, duplicate).message}</p>
+                  <p>Requested: {listSummary.requested}</p>
+                  <p>Eligible: {listSummary.eligible}</p>
                   <p>SMTP accepted: {listSummary.smtpAccepted}</p>
                   <p>Failed: {listSummary.failed}</p>
                   <p>Suppressed: {listSummary.suppressed}</p>
-                  {listSummary.skipped > 0 ? <p>Skipped: {listSummary.skipped}</p> : null}
-                  {listSummary.message ? <p className="text-destructive">{listSummary.message}</p> : null}
-                  <p className="text-muted-foreground">
-                    SMTP acceptance does not confirm inbox delivery. Each address was submitted separately.
-                  </p>
+                  <p>Skipped: {listSummary.skipped}</p>
+                  {listSummary.unknown > 0 ? <p>Unknown: {listSummary.unknown}</p> : null}
+                  {listSummary.notAttempted > 0 ? <p>Not attempted: {listSummary.notAttempted}</p> : null}
                 </CardContent>
               </Card>
             ) : null}
@@ -490,7 +518,13 @@ export function SettingsPage() {
         ) : null}
       </AppPageContainer>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (sending) return;
+          setConfirmOpen(open);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -500,7 +534,7 @@ export function SettingsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {recipientMode === "test_list"
-                ? `Kivorenta will submit one separate email to each of ${selectedList?.eligibleCount ?? 0} eligible recipients in “${selectedList?.name ?? "this test list"}”. Each recipient receives an individual message. SMTP acceptance does not confirm inbox delivery.`
+                ? `You are about to send a real test message to ${selectedList?.eligibleCount ?? 0} recipients in “${selectedList?.name ?? "this test list"}”. Kivorenta will submit one separate email to each recipient through the configured Spacemail SMTP account. SMTP acceptance does not confirm inbox delivery.`
                 : `This sends a single plain-text and HTML message from ${status?.accountEmail ?? "the mailbox"} to ${selectedTestRecipient}. Subject: ${subject.trim() || "(empty)"}. Acceptance by the outgoing server does not confirm inbox delivery. Campaign queues are not used.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -508,13 +542,14 @@ export function SettingsPage() {
             <AlertDialogCancel disabled={sending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={sending}
+              aria-busy={sending}
               onClick={(event) => {
                 event.preventDefault();
                 void submitTest();
               }}
             >
               {sending
-                ? "Sending…"
+                ? busyLabel
                 : recipientMode === "test_list"
                   ? `Send ${selectedList?.eligibleCount ?? 0} test messages`
                   : "Send one test message"}

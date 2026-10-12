@@ -54,6 +54,41 @@ function errorFields(error: unknown): MailErrorFields & { message: string } {
   return error as Error & MailErrorFields;
 }
 
+export type SmtpFailureCategory = "authentication" | "connection" | "timeout" | "recipient" | "unknown";
+
+export function smtpFailureCategory(error: unknown): SmtpFailureCategory {
+  const fields = errorFields(error);
+  const code = (fields.code ?? "").toUpperCase();
+  const serverCode = (fields.serverResponseCode ?? "").toUpperCase();
+  const message = fields.message.toLowerCase();
+  if (
+    fields.authenticationFailed === true ||
+    code === "EAUTH" ||
+    fields.responseCode === 535 ||
+    fields.responseCode === 534 ||
+    serverCode.includes("AUTHENTICATIONFAILED") ||
+    message.includes("credential") ||
+    message.includes("authenticate")
+  ) {
+    return "authentication";
+  }
+  if (code.includes("TIMEOUT") || code === "ETIMEDOUT" || code === "ETIMEOUT" || code === "CONNECT_TIMEOUT" || code === "GREETING_TIMEOUT") {
+    return "timeout";
+  }
+  if (["ESOCKET", "ECONNECTION", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN", "SMTP_UNCERTAIN"].includes(code) || message.includes("could not connect")) {
+    return "connection";
+  }
+  if (code === "EENVELOPE" || (fields.responseCode ?? 0) >= 500) return "recipient";
+  return "unknown";
+}
+
+export function publicSmtpCode(error: unknown) {
+  const category = smtpFailureCategory(error);
+  if (category === "authentication") return "smtp_authentication_failed";
+  if (category === "recipient") return "smtp_rejected";
+  return "smtp_unavailable";
+}
+
 export function friendlyMailError(error: unknown, protocol: "smtp" | "imap") {
   const fields = errorFields(error);
   const code = (fields.code ?? "").toUpperCase();

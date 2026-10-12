@@ -4,8 +4,11 @@ import { MailboxError } from "../mail/errors.js";
 import { permissionForRequest } from "../auth/permissions.js";
 import { sanitizeAuditMetadata } from "../lib/security-audit.js";
 import { testSendSchema } from "../validation/mail.js";
+import { explainApiError } from "../../src/lib/mail-user-errors.js";
+import { describeRouteFailure, isStaleAssetError } from "../../src/lib/route-error.js";
 import {
   buildTestListSummary,
+  claimedSubmissionAction,
   planTestListRecipients,
   rejectsClientRecipientBatch,
   sendEligibleRecipients,
@@ -39,6 +42,27 @@ describe("test list eligibility", () => {
     expect(plan.suppressed).toBe(1);
     expect(plan.skipped).toBe(3);
     expect(plan.requested).toBe(6);
+  });
+
+  it("submits one normalized address when contacts differ only by case or surrounding spaces", () => {
+    const plan = planTestListRecipients(
+      [
+        { contactId: "2", email: " User@example.com ", subscriptionStatus: "subscribed" },
+        { contactId: "1", email: "user@example.com", subscriptionStatus: "subscribed" },
+      ],
+      new Set(),
+    );
+    expect(plan.eligible).toEqual([{ contactId: "1", email: "user@example.com" }]);
+    expect(plan.duplicates).toBe(1);
+  });
+});
+
+describe("recipient submission claims", () => {
+  it("sends only the row this request inserted", () => {
+    expect(claimedSubmissionAction(true, "pending")).toBe("send");
+    expect(claimedSubmissionAction(false, "pending")).toBe("unknown");
+    expect(claimedSubmissionAction(false, "accepted")).toBe("accepted");
+    expect(claimedSubmissionAction(false, null)).toBe("unknown");
   });
 });
 
@@ -118,6 +142,7 @@ describe("separate test-list submissions", () => {
     expect(calls).toEqual(["one@example.com", "two@example.com"]);
     expect(attempts).toEqual([
       { contactId: "1", email: "one@example.com", outcome: "accepted" },
+      { contactId: "2", email: "two@example.com", outcome: "unknown" },
     ]);
     expect(sharedFailure).toContain("credentials");
     const summary = buildTestListSummary({
@@ -142,5 +167,26 @@ describe("separate test-list submissions", () => {
       eligibleCount: 3,
       acceptedCount: 1,
     });
+    expect(JSON.stringify(metadata)).not.toContain("postgres://");
+    expect(JSON.stringify(metadata)).not.toContain("password");
+  });
+});
+
+describe("safe application errors", () => {
+  it("describes route failures without stack traces", () => {
+    expect(describeRouteFailure({ status: 404 }).kind).toBe("not_found");
+    expect(describeRouteFailure({ status: 403 }).title).toBe("Access denied");
+    expect(describeRouteFailure({ status: 503 }).kind).toBe("unavailable");
+    expect(isStaleAssetError(new Error("Failed to fetch dynamically imported module"))).toBe(true);
+    expect(describeRouteFailure(new Error("Importing a module script failed")).reload).toBe(true);
+    expect(describeRouteFailure(new Error("secret stack postgres://user:pass@db/app")).description).not.toContain("postgres://");
+  });
+
+  it("maps database and SMTP failures to safe messages", () => {
+    expect(explainApiError({ code: "database_unavailable", status: 503 })).toContain("cannot reach the database");
+    expect(explainApiError({ code: "database_unavailable" })).not.toContain("Invalid");
+    expect(explainApiError({ code: "smtp_authentication_failed" })).toContain("authenticate");
+    expect(explainApiError({ code: "test_list_too_large", message: "This test list has 12 eligible recipients. Test sends are limited to 8." })).toContain("limited to 8");
+    expect(explainApiError({ message: "connect ETIMEDOUT postgres://user:secret@host/db", status: 500 })).not.toContain("secret");
   });
 });

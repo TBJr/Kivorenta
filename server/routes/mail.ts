@@ -8,7 +8,7 @@ import type { PermissionKey } from "../auth/permissions.js";
 import { getSessionUser } from "../lib/session.js";
 import { userHasPermission } from "../services/access-control.js";
 import { loadMailConfig } from "../mail/configuration.js";
-import { MailboxError } from "../mail/errors.js";
+import { MailboxError, publicSmtpCode } from "../mail/errors.js";
 import {
   listMailboxFolders,
   listMailboxMessages,
@@ -127,17 +127,20 @@ export function registerMailRoutes(app: Hono) {
           },
         );
         if (outcome.kind === "not_configured") {
-          return json(c, { error: "Email account is not configured on the server." }, 503);
+          return json(c, { error: "Email account is not configured on the server.", code: "smtp_unavailable" }, 503);
         }
-        if (outcome.kind === "not_found") return json(c, { error: "List not found" }, 404);
+        if (outcome.kind === "not_found") {
+          return json(c, { error: "That test list could not be found.", code: "test_list_not_found" }, 404);
+        }
         if (outcome.kind === "not_test_list") {
-          return json(c, { error: "Only a list marked as a test list can be used." }, 400);
+          return json(c, { error: "Only a list marked as a test list can be used.", code: "test_list_not_enabled" }, 400);
         }
         if (outcome.kind === "none_eligible") {
           return json(
             c,
             {
-              error: "This test list has no eligible recipients.",
+              error: "This test list does not currently contain any eligible recipients.",
+              code: "test_list_no_eligible_recipients",
               requested: outcome.requested,
               suppressed: outcome.suppressed,
               skipped: outcome.skipped,
@@ -150,14 +153,16 @@ export function registerMailRoutes(app: Hono) {
             c,
             {
               error: `This test list has ${outcome.eligible} eligible recipients. Test sends are limited to ${outcome.limit}.`,
-              code: "recipient_limit",
+              code: "test_list_too_large",
               eligible: outcome.eligible,
               limit: outcome.limit,
             },
             400,
           );
         }
-        if (outcome.kind === "rate_limited") return json(c, { error: outcome.message }, 429);
+        if (outcome.kind === "rate_limited") {
+          return json(c, { error: outcome.message, code: "test_send_rate_limited" }, 429);
+        }
         return json(c, {
           summary: outcome.summary,
           results: outcome.results.map((result) => ({
@@ -168,7 +173,7 @@ export function registerMailRoutes(app: Hono) {
         });
       } catch (error) {
         if (error instanceof MailboxError) {
-          return json(c, { error: error.message }, error.status);
+          return json(c, { error: error.message, code: publicSmtpCode(error) }, error.status);
         }
         throw error;
       }

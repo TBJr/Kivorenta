@@ -80,13 +80,15 @@ export type MailStatus = {
 
 export class MailApiError extends Error {
   status: number;
+  code: string | null;
   details?: unknown;
 
-  constructor(message: string, status: number, details?: unknown) {
+  constructor(message: string, status: number, details?: unknown, code?: string | null) {
     super(message);
     this.name = "MailApiError";
     this.status = status;
     this.details = details;
+    this.code = code ?? null;
   }
 }
 
@@ -102,7 +104,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     const message = typeof payload.error === "string" ? payload.error : "Request failed";
-    throw new MailApiError(message, response.status, payload);
+    const code = typeof payload.code === "string" ? payload.code : null;
+    throw new MailApiError(message, response.status, payload, code);
   }
   return payload as T;
 }
@@ -182,6 +185,9 @@ export type TestListSummary = {
   failed: number;
   suppressed: number;
   skipped: number;
+  unknown: number;
+  notAttempted: number;
+  failureCategory: "authentication" | "connection" | "timeout" | "recipient" | "unknown" | null;
   status: "completed" | "failed";
   message: string | null;
 };

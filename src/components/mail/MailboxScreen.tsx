@@ -1,6 +1,6 @@
 import { Inbox, Send } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 import { FolderNav } from "@/components/mail/FolderNav";
 import { MessageList } from "@/components/mail/MessageList";
@@ -11,8 +11,10 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listInbox, listMailbox, listSent, MailApiError, type MailMessageList } from "@/lib/mail-api";
+import { readSentRefreshToken } from "@/lib/test-send-follow-up";
 
 export function MailboxScreen({ mode }: { mode: "inbox" | "sent" }) {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const folderQuery = searchParams.get("folder");
   const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
@@ -20,7 +22,8 @@ export function MailboxScreen({ mode }: { mode: "inbox" | "sent" }) {
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restricted, setRestricted] = useState(false);
-  const requestKey = `${mode}:${folderQuery ?? ""}:${page}`;
+  const refreshSent = mode === "sent" ? readSentRefreshToken(location.state) : "";
+  const requestKey = `${mode}:${folderQuery ?? ""}:${page}:${refreshSent}`;
   const loading = loadedKey !== requestKey;
 
   useEffect(() => {

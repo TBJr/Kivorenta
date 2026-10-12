@@ -29,6 +29,7 @@ import {
 import { prepareTestMessageHtml } from "./mail-test-send.js";
 import {
   buildTestListSummary,
+  claimedSubmissionAction,
   planTestListRecipients,
   recipientSubmissionKey,
   sendEligibleRecipients,
@@ -82,6 +83,16 @@ function summaryFromOperation(row: typeof testMessageOperations.$inferSelect): T
     failed: row.failedCount,
     suppressed: row.suppressedCount,
     skipped: row.skippedCount,
+    unknown: row.unknownCount,
+    notAttempted: row.notAttemptedCount,
+    failureCategory:
+      row.failureCategory === "authentication" ||
+      row.failureCategory === "connection" ||
+      row.failureCategory === "timeout" ||
+      row.failureCategory === "recipient" ||
+      row.failureCategory === "unknown"
+        ? row.failureCategory
+        : null,
     status: row.status === "failed" ? "failed" : "completed",
     message: row.errorMessage,
   };
@@ -115,7 +126,9 @@ async function childResults(db: Database, operationId: string): Promise<Recipien
           ? "rejected"
           : row.status === "suppressed"
             ? "suppressed"
-            : "failed",
+            : row.status === "failed"
+              ? "failed"
+              : "unknown",
   }));
 }
 
@@ -300,6 +313,9 @@ export async function sendDesignatedTestList(
           failed: 0,
           suppressed: planSuppressed,
           skipped: planSkipped,
+          unknown: 0,
+          notAttempted: 0,
+          failureCategory: null,
           status: "completed",
           message: null,
         }),
@@ -321,63 +337,56 @@ export async function sendDesignatedTestList(
     const priorAccepted = recorded.filter((row) => row.status === "accepted").length;
     const priorFailed = recorded.filter((row) => row.status === "rejected" || row.status === "failed").length;
     const priorSuppressed = recorded.filter((row) => row.status === "suppressed").length;
+    const priorUnknown = recorded.filter((row) => row.status === "pending" || row.status === "unknown").length;
 
     const html = prepareTestMessageHtml(input);
     const sentCopyLock = (messageId: string): MailLock => (task) =>
       withPgAdvisoryLock(db, `sent-copy:${messageId}`, task);
 
-    const { attempts, sharedFailure } = await sendEligibleRecipients({
+    const { attempts, sharedFailure, failureCategory } = await sendEligibleRecipients({
       recipients: snapshot,
       alreadyRecorded,
       sendOne: async (recipient) => {
-        if (await emailSuppressedNow(db, userId, recipient.email)) {
-          await insertPendingSubmission(db, {
-            userId,
-            idempotencyKey: recipientSubmissionKey(input.idempotencyKey, recipient.contactId),
-            fromAddress: config.email,
-            toAddress: recipient.email,
-            subject: input.subject,
-            operationId: operation.id,
-            contactId: recipient.contactId,
-          });
-          const row = await findSubmissionByKey(
-            db,
-            recipientSubmissionKey(input.idempotencyKey, recipient.contactId),
-          );
-          if (row && row.status === "pending") {
-            await updateSubmission(db, row.id, {
-              status: "suppressed",
-              sentCopyStatus: "not_attempted",
-              errorMessage: "Suppressed",
-            });
-          }
-          return "suppressed";
-        }
-
-        const pending = await insertPendingSubmission(db, {
+        const submissionKey = recipientSubmissionKey(input.idempotencyKey, recipient.contactId);
+        const inserted = await insertPendingSubmission(db, {
           userId,
-          idempotencyKey: recipientSubmissionKey(input.idempotencyKey, recipient.contactId),
+          idempotencyKey: submissionKey,
           fromAddress: config.email,
           toAddress: recipient.email,
           subject: input.subject,
           operationId: operation.id,
           contactId: recipient.contactId,
         });
-        const submission =
-          pending ??
-          (await findSubmissionByKey(db, recipientSubmissionKey(input.idempotencyKey, recipient.contactId)));
-        if (!submission) return "failed";
-        if (submission.status === "accepted") return "accepted";
-        if (submission.status === "rejected") return "rejected";
-        if (submission.status === "suppressed") return "suppressed";
-        if (submission.status === "failed") return "failed";
+        const submission = inserted ?? (await findSubmissionByKey(db, submissionKey));
+        const claim = claimedSubmissionAction(Boolean(inserted), submission?.status ?? null);
+        if (claim !== "send") return claim;
+        if (!submission) return "unknown";
 
-        const submitted = await submitSingleRecipientMessage(config, {
-          subject: input.subject,
-          text: input.text,
-          html,
-          to: recipient.email,
-        });
+        if (await emailSuppressedNow(db, userId, recipient.email)) {
+          await updateSubmission(db, submission.id, {
+            status: "suppressed",
+            sentCopyStatus: "not_attempted",
+            errorMessage: "Suppressed",
+          });
+          return "suppressed";
+        }
+
+        let submitted;
+        try {
+          submitted = await submitSingleRecipientMessage(config, {
+            subject: input.subject,
+            text: input.text,
+            html,
+            to: recipient.email,
+          });
+        } catch (error) {
+          await updateSubmission(db, submission.id, {
+            status: "unknown",
+            sentCopyStatus: "not_attempted",
+            errorMessage: "The outgoing server did not confirm whether it accepted the message.",
+          });
+          throw error;
+        }
         if (!submitted.accepted) {
           await updateSubmission(db, submission.id, {
             status: "rejected",
@@ -429,6 +438,9 @@ export async function sendDesignatedTestList(
       attempts,
       priorAccepted,
       priorFailed,
+      priorUnknown,
+      notAttempted: Math.max(0, snapshot.length - alreadyRecorded.size - attempts.length),
+      failureCategory,
       sharedFailure,
     });
     await db
@@ -438,6 +450,9 @@ export async function sendDesignatedTestList(
         acceptedCount: summary.smtpAccepted,
         failedCount: summary.failed,
         suppressedCount: summary.suppressed,
+        unknownCount: summary.unknown,
+        notAttemptedCount: summary.notAttempted,
+        failureCategory: summary.failureCategory,
         errorMessage: summary.message,
         updatedAt: new Date(),
       })

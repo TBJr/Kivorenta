@@ -37,6 +37,7 @@ import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { HomePage } from "@/pages/HomePage";
 import { InviteAcceptPage } from "@/pages/InviteAcceptPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { WorkspaceRouteError } from "@/components/errors/RouteErrorPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { PrivacyPage } from "@/pages/PrivacyPage";
 import { RegisterPage } from "@/pages/RegisterPage";
@@ -127,6 +128,7 @@ export const appRoutes = [
         <DashboardLayout />
       </ProtectedRoute>
     ),
+    errorElement: <WorkspaceRouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
       { path: "compose/", element: <ComposePage /> },
@@ -160,6 +162,7 @@ export const appRoutes = [
       { path: "admin/roles/new/", element: <RoleDetailsPage /> },
       { path: "admin/roles/:roleId/", element: <RoleDetailsPage /> },
       { path: "admin/audit/", element: <AuditPage /> },
+      { path: "*", element: <NotFoundPage variant="app" /> },
     ],
   },
   {

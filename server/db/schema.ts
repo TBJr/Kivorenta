@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -441,6 +442,9 @@ export const testMessageOperations = pgTable(
     failedCount: integer("failed_count").notNull().default(0),
     suppressedCount: integer("suppressed_count").notNull().default(0),
     skippedCount: integer("skipped_count").notNull().default(0),
+    unknownCount: integer("unknown_count").notNull().default(0),
+    notAttemptedCount: integer("not_attempted_count").notNull().default(0),
+    failureCategory: text("failure_category"),
     recipientSnapshot: jsonb("recipient_snapshot")
       .$type<{ contactId: string; email: string }[]>()
       .notNull()
@@ -489,6 +493,12 @@ export const mailSubmissions = pgTable(
   },
   (table) => [
     uniqueIndex("mail_submissions_idempotency_key_unique").on(table.idempotencyKey),
+    uniqueIndex("mail_submissions_operation_contact_unique")
+      .on(table.operationId, table.contactId)
+      .where(sql`${table.operationId} is not null and ${table.contactId} is not null`),
+    uniqueIndex("mail_submissions_operation_email_unique")
+      .on(table.operationId, sql`lower(${table.toAddress})`)
+      .where(sql`${table.operationId} is not null`),
     index("mail_submissions_created_at_idx").on(table.createdAt),
   ],
 );

@@ -2,11 +2,15 @@ import { renderToString } from "react-dom/server";
 import { HelmetProvider, type HelmetServerState } from "react-helmet-async";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 
+import { StandaloneRouteError } from "@/components/errors/RouteErrorPage";
 import { appRoutes } from "@/app/routes";
 
 export async function render(url: string) {
   const helmetContext: { helmet?: HelmetServerState } = {};
-  const memoryRouter = createMemoryRouter(appRoutes, { initialEntries: [url] });
+  const memoryRouter = createMemoryRouter(
+    [{ errorElement: <StandaloneRouteError />, children: appRoutes }],
+    { initialEntries: [url] },
+  );
 
   const appHtml = renderToString(
     <HelmetProvider context={helmetContext}>
