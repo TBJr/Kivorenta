@@ -31,5 +31,23 @@ describe("mapAuthErrorMessage", () => {
     expect(mapAuthErrorMessage("Internal server error")).toBe(
       "Unable to complete the request. Please try again.",
     );
+    expect(mapAuthErrorMessage("PASSWORD_TOO_SHORT")).toBe(
+      "Unable to complete the request. Please try again.",
+    );
+  });
+
+  it("maps password-change failures without leaking raw auth codes", () => {
+    expect(mapAuthErrorMessage("Invalid password")).toBe("Current password is incorrect.");
+    expect(mapAuthErrorMessage("INVALID_PASSWORD")).toBe("Current password is incorrect.");
+    expect(mapAuthErrorMessage("Current password is incorrect.")).toBe("Current password is incorrect.");
+    expect(
+      mapAuthErrorMessage("The password you entered has been compromised. Please choose a different password."),
+    ).toBe("That password has appeared in a data breach. Choose a different password.");
+  });
+
+  it("keeps already user-facing API copy when remapping", () => {
+    expect(mapAuthErrorMessage("Choose a password that is different from your current password.")).toBe(
+      "Choose a password that is different from your current password.",
+    );
   });
 });

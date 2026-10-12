@@ -71,16 +71,23 @@ export function UserDetailsPage() {
     .includes("super-admin");
   const canDeleteAccount = can("users.delete") && Boolean(sessionUserId) && sessionUserId !== userId;
 
-  async function load() {
-    const response = await fetch(`/api/admin/users/${userId}`, { credentials: "include" });
-    const payload = await response.json();
-    if (!response.ok) {
-      setError(payload.error ?? "User not found");
-      return;
+  async function load(options?: { silent?: boolean }) {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, { credentials: "include" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (!options?.silent) {
+          setError(typeof payload.error === "string" ? payload.error : "User not found");
+        }
+        return;
+      }
+      setAccount(payload.user);
+      setName(payload.user.name);
+      setRoles(payload.user.roles);
+      if (!options?.silent) setError(null);
+    } catch {
+      if (!options?.silent) setError("Could not load this user.");
     }
-    setAccount(payload.user);
-    setName(payload.user.name);
-    setRoles(payload.user.roles);
   }
 
   useEffect(() => {
@@ -173,13 +180,20 @@ export function UserDetailsPage() {
   }
 
   async function resetPassword() {
+    setError(null);
+    setMessage(null);
     const response = await fetch(`/api/admin/users/${userId}/password-reset`, { method: "POST", credentials: "include" });
-    const payload = await response.json();
-    setMessage(response.ok ? "Password reset email requested." : payload.error);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(typeof payload.error === "string" ? payload.error : "Could not request a password reset.");
+      return;
+    }
+    setMessage("Password reset email requested.");
   }
 
   function openChangePassword() {
     setError(null);
+    setMessage(null);
     setNewPassword("");
     setConfirmPassword("");
     setShowPassword(false);
@@ -190,6 +204,7 @@ export function UserDetailsPage() {
   async function confirmChangePassword() {
     if (!account || changing || !isSuperAdmin) return;
     setError(null);
+    setMessage(null);
     const policyError = validatePassword(newPassword);
     if (policyError) {
       setError(policyError);
@@ -214,7 +229,6 @@ export function UserDetailsPage() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         setError(typeof payload.error === "string" ? payload.error : "Could not update this password.");
-        setChanging(false);
         return;
       }
       setChangePasswordOpen(false);
@@ -222,8 +236,9 @@ export function UserDetailsPage() {
       setConfirmPassword("");
       setShowPassword(false);
       setRequirePasswordChange(false);
+      setError(null);
       setMessage("Password updated.");
-      await load();
+      await load({ silent: true });
     } catch {
       setError("Could not update this password.");
     } finally {
@@ -232,9 +247,15 @@ export function UserDetailsPage() {
   }
 
   async function revokeSessions() {
+    setError(null);
+    setMessage(null);
     const response = await fetch(`/api/admin/users/${userId}/sessions`, { method: "DELETE", credentials: "include" });
-    setMessage(response.ok ? "Sessions revoked." : "Could not revoke sessions.");
-    await load();
+    if (!response.ok) {
+      setError("Could not revoke sessions.");
+      return;
+    }
+    setMessage("Sessions revoked.");
+    await load({ silent: true });
   }
 
   function openDelete() {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { validatePassword } from "@/lib/auth-validation";
+import { mapAuthErrorMessage, validatePassword } from "@/lib/auth-validation";
 
 type ChangePasswordFormProps = {
   onSuccess?: () => void;
@@ -49,7 +49,9 @@ export function ChangePasswordForm({
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof payload.error === "string" ? payload.error : "Password change failed.");
+        setError(
+          typeof payload.error === "string" ? mapAuthErrorMessage(payload.error) : "Password change failed.",
+        );
         return;
       }
       setCurrentPassword("");

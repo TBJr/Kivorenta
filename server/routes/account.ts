@@ -9,6 +9,7 @@ import { createDb } from "../db/index.js";
 import { user } from "../db/schema.js";
 import { loadEnv } from "../env.js";
 import { defaultTwoFactorEnforcementDate, loadAccountSecurityState } from "../lib/account-security.js";
+import { appendAuthSetCookies, mapChangePasswordError } from "../lib/auth-response-headers.js";
 import { validationError } from "../lib/http-errors.js";
 import { validatePassword } from "../lib/password-policy.js";
 import { clientIpFromRequest, userAgentFromRequest } from "../lib/request-context.js";
@@ -117,15 +118,18 @@ export function registerAccountRoutes(app: Hono) {
     const ip = clientIpFromRequest(c);
     const userAgent = userAgentFromRequest(c);
 
+    let authHeaders: Headers | undefined;
     try {
-      await auth.api.changePassword({
+      const result = await auth.api.changePassword({
         headers: c.req.raw.headers,
         body: {
           currentPassword: parsed.data.currentPassword,
           newPassword: parsed.data.newPassword,
           revokeOtherSessions: parsed.data.revokeOtherSessions ?? true,
         },
+        returnHeaders: true,
       });
+      authHeaders = result.headers;
     } catch (error) {
       await recordAudit(db, {
         actorUserId: account.id,
@@ -137,8 +141,7 @@ export function registerAccountRoutes(app: Hono) {
         userAgent,
         metadata: { reason: "change_password_rejected" },
       });
-      const message = error instanceof Error ? error.message : "Password change failed.";
-      return json(c, { error: message }, 400);
+      return json(c, { error: mapChangePasswordError(error) }, 400);
     }
 
     const isSuperAdmin = parseRoleKeys((account as { role?: string }).role).includes("super-admin");
@@ -162,6 +165,7 @@ export function registerAccountRoutes(app: Hono) {
       metadata: { revokeOtherSessions: parsed.data.revokeOtherSessions ?? true },
     });
 
+    appendAuthSetCookies(c, authHeaders);
     return json(c, { ok: true, mustChangePassword: false });
   });
 }

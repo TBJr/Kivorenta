@@ -50,8 +50,32 @@ export function mapAuthErrorMessage(message: string) {
   ) {
     return "Invalid email or password.";
   }
+  if (
+    normalized.includes("current password is incorrect") ||
+    normalized.includes("invalid password") ||
+    normalized.includes("invalid_password")
+  ) {
+    return "Current password is incorrect.";
+  }
+  if (normalized.includes("compromised") || normalized.includes("data breach")) {
+    return "That password has appeared in a data breach. Choose a different password.";
+  }
   if (normalized.includes("verify") || normalized.includes("not verified")) {
     return "Verify your email before signing in. Check your inbox for a verification link.";
+  }
+  if (normalized.includes("unable to complete the request")) {
+    return "Unable to complete the request. Please try again.";
+  }
+  // Keep short, already user-facing API copy from our password routes.
+  if (
+    normalized.startsWith("choose a password") ||
+    normalized.startsWith("password must") ||
+    normalized.startsWith("passwords do not") ||
+    normalized.startsWith("new password and confirmation") ||
+    normalized.startsWith("password change failed") ||
+    normalized.startsWith("invalid input")
+  ) {
+    return message.endsWith(".") ? message : `${message}.`;
   }
   return "Unable to complete the request. Please try again.";
 }
