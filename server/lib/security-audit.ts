@@ -48,7 +48,10 @@ export function auditEventTypeForAction(action: string): string {
   if (action.includes("login") || action.includes("sign_in") || action.includes("sign_out")) {
     return "authentication";
   }
-  if (action === "page_viewed" || action.startsWith("page_")) return "activity";
+  if (action === "page_viewed" || action === "api_mutation" || action.startsWith("page_")) {
+    return "activity";
+  }
+  if (action.startsWith("campaign_")) return "campaign";
   if (action.includes("mail") || action.includes("mailbox")) return "mailbox";
   return "administration";
 }

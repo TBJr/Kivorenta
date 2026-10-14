@@ -10,7 +10,7 @@
 
 `sanitizeAuditMetadata()` strips keys such as passwords, tokens, SMTP/IMAP secrets, message bodies, and raw SMTP payloads.
 
-Never log: passwords, session tokens, reset/invite tokens, 2FA secrets, recovery codes, full email bodies, CSV uploads.
+Never log: passwords, session tokens, reset/invite tokens, 2FA secrets, recovery codes, full email bodies, CSV uploads, or request bodies on `api_mutation` rows.
 
 ## Immutability
 
@@ -20,11 +20,19 @@ Never log: passwords, session tokens, reset/invite tokens, 2FA secrets, recovery
 
 ## Request context
 
-IP and user agent are taken from `x-forwarded-for` / `x-real-ip` and `user-agent` (Vercel-compatible). Actor identity is always derived from server session, not client JSON.
+IP and user agent are taken from `x-forwarded-for` / `x-real-ip` and `user-agent` (Vercel-compatible). Browser and OS are parsed server-side from the user agent into `metadata.client`. Optional hints: `Accept-Language` → `metadata.locale`, `cf-ipcountry` → `metadata.country`.
+
+Each API request is assigned a `request_id` (also returned as `x-request-id`) so related audit rows can be correlated.
+
+Actor identity is always derived from server session, not client JSON.
+
+### What we cannot collect from a browser
+
+**MAC addresses** (and other link-layer / hardware identifiers) are not available to a web SPA. HTTP does not expose them, and JavaScript in the browser cannot read them. Only on-prem agents or MDM software could supply a MAC, and client-supplied values would be spoofable—Kivorenta does **not** accept or store MAC addresses from the client.
 
 ## Reliability
 
-- Auth audit failures are swallowed (logged server-side) so login UX is unaffected
+- Auth and `api_mutation` audit failures are swallowed (logged server-side) so UX is unaffected
 - External SMTP outcomes are recorded on submission rows first; audit insert failures are logged and do not resend mail
 - Critical admin mutations should move toward same-transaction audit where feasible (ongoing)
 

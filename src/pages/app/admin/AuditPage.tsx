@@ -348,6 +348,28 @@ export function AuditPage() {
                 <div><dt className="text-muted-foreground">Resource</dt><dd>{selected.resourceType ? `${selected.resourceType} / ${selected.resourceId ?? "—"}` : "—"}</dd></div>
                 {selected.requestId ? <div><dt className="text-muted-foreground">Request ID</dt><dd className="break-all">{selected.requestId}</dd></div> : null}
                 {selected.ipAddress ? <div><dt className="text-muted-foreground">IP address</dt><dd>{selected.ipAddress}</dd></div> : null}
+                {(() => {
+                  const client = selected.metadata?.client;
+                  if (!client || typeof client !== "object" || Array.isArray(client)) return null;
+                  const c = client as Record<string, unknown>;
+                  const browser = [c.browser, c.browserVersion].filter(Boolean).join(" ");
+                  const os = [c.os, c.osVersion].filter(Boolean).join(" ");
+                  const device = typeof c.deviceType === "string" ? c.deviceType : null;
+                  if (!browser && !os && !device) return null;
+                  return (
+                    <>
+                      {browser ? <div><dt className="text-muted-foreground">Browser</dt><dd>{browser}</dd></div> : null}
+                      {os ? <div><dt className="text-muted-foreground">Operating system</dt><dd>{os}</dd></div> : null}
+                      {device ? <div><dt className="text-muted-foreground">Device</dt><dd>{device}</dd></div> : null}
+                    </>
+                  );
+                })()}
+                {typeof selected.metadata?.locale === "string" ? (
+                  <div><dt className="text-muted-foreground">Language</dt><dd>{selected.metadata.locale}</dd></div>
+                ) : null}
+                {typeof selected.metadata?.country === "string" ? (
+                  <div><dt className="text-muted-foreground">Country</dt><dd>{selected.metadata.country}</dd></div>
+                ) : null}
                 {selected.userAgent ? <div><dt className="text-muted-foreground">User agent</dt><dd className="break-all text-xs">{selected.userAgent}</dd></div> : null}
                 <div>
                   <dt className="text-muted-foreground">Metadata</dt>

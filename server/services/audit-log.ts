@@ -1,12 +1,14 @@
 import { and, count, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
+import { getAuditRequestContext } from "../lib/audit-request-context.js";
 import {
   auditActionLabel,
   categoryForAction,
   type AuditActorType,
   type AuditCategory,
 } from "../lib/audit-taxonomy.js";
+import { parseClientFromUserAgent } from "../lib/client-context.js";
 import { auditEventTypeForAction, sanitizeAuditMetadata, type AuditResult } from "../lib/security-audit.js";
 import type { Database } from "../db/index.js";
 import { adminAuditEvents, user } from "../db/schema.js";
@@ -15,6 +17,8 @@ export type AuditRequestContext = {
   ipAddress?: string | null;
   userAgent?: string | null;
   requestId?: string | null;
+  acceptLanguage?: string | null;
+  country?: string | null;
 };
 
 export type RecordAuditEventInput = {
@@ -55,12 +59,44 @@ export const auditListQuerySchema = z.object({
   to: z.string().optional(),
 });
 
+function mergeAuditRequestContext(input?: AuditRequestContext): AuditRequestContext {
+  const ambient = getAuditRequestContext();
+  return {
+    ipAddress: input?.ipAddress ?? ambient?.ipAddress ?? null,
+    userAgent: input?.userAgent ?? ambient?.userAgent ?? null,
+    requestId: input?.requestId ?? ambient?.requestId ?? null,
+    acceptLanguage: input?.acceptLanguage ?? ambient?.acceptLanguage ?? null,
+    country: input?.country ?? ambient?.country ?? null,
+  };
+}
+
+function enrichAuditMetadata(
+  metadata: Record<string, unknown> | undefined,
+  ctx: AuditRequestContext,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(metadata ?? {}) };
+  const ambient = getAuditRequestContext();
+  if (!out.client) {
+    const client = ambient?.client ?? parseClientFromUserAgent(ctx.userAgent ?? null);
+    if (client.browser || client.os || client.deviceType) {
+      out.client = client;
+    }
+  }
+  if (!out.locale && ctx.acceptLanguage) {
+    out.locale = ctx.acceptLanguage;
+  }
+  if (!out.country && ctx.country) {
+    out.country = ctx.country;
+  }
+  return out;
+}
+
 export async function recordAuditEvent(db: DbWriter, input: RecordAuditEventInput) {
   const actorUserId = input.actorUserId ?? input.actorId ?? null;
   const result = input.result ?? input.outcome ?? "success";
   const category = input.category ?? categoryForAction(input.action);
   const description = input.description ?? auditActionLabel(input.action);
-  const ctx = input.requestContext;
+  const ctx = mergeAuditRequestContext(input.requestContext);
 
   await db.insert(adminAuditEvents).values({
     id: crypto.randomUUID(),
@@ -73,12 +109,12 @@ export async function recordAuditEvent(db: DbWriter, input: RecordAuditEventInpu
     resourceType: input.resourceType ?? null,
     resourceId: input.resourceId ?? null,
     description,
-    requestId: ctx?.requestId ?? null,
+    requestId: ctx.requestId ?? null,
     actorType: input.actorType ?? (actorUserId ? "user" : "system"),
     actorEmail: input.actorEmail ?? null,
-    ipAddress: ctx?.ipAddress ?? null,
-    userAgent: ctx?.userAgent ?? null,
-    metadata: sanitizeAuditMetadata(input.metadata),
+    ipAddress: ctx.ipAddress ?? null,
+    userAgent: ctx.userAgent ?? null,
+    metadata: sanitizeAuditMetadata(enrichAuditMetadata(input.metadata, ctx)),
   });
 }
 

@@ -8,12 +8,14 @@ import { createDb, probeDatabase, type Database } from "./db/index.js";
 import type { ServerEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { accessDeniedMessage } from "./lib/brand.js";
+import { runWithAuditRequestContext } from "./lib/audit-request-context.js";
 import {
   captureDatabaseFailures,
   DatabaseUnavailableError,
   peekDatabaseFailure,
   publicApiError,
 } from "./lib/db-errors.js";
+import { auditRequestContextFromHeaders } from "./lib/request-context.js";
 import { safeErrorLabel, logStartup } from "./lib/startup-log.js";
 import { getSessionUser } from "./lib/session.js";
 import { probeRedis } from "./queue/connection.js";
@@ -26,6 +28,7 @@ import { registerAccountRoutes } from "./routes/account.js";
 import { registerActivityRoutes } from "./routes/activity.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { recordAccessDeniedAudit } from "./services/access-denied-audit.js";
+import { recordApiMutationAudit } from "./services/api-mutation-audit.js";
 import { recordAuthHandlerAudit } from "./services/auth-event-audit.js";
 import { registerCampaignRoutes } from "./routes/campaigns.js";
 import { registerContactImportRoutes } from "./routes/contact-import.js";
@@ -64,6 +67,28 @@ export function createSendStackApp(env: ServerEnv, options: CreateAppOptions = {
       credentials: true,
     }),
   );
+
+  app.use("/api/*", async (c, next) => {
+    const requestContext = auditRequestContextFromHeaders(c.req.raw.headers);
+    c.header("x-request-id", requestContext.requestId);
+    const started = Date.now();
+    return runWithAuditRequestContext(requestContext, async () => {
+      await next();
+      try {
+        await recordApiMutationAudit({
+          db,
+          method: c.req.method,
+          path: c.req.path,
+          status: c.res.status,
+          durationMs: Date.now() - started,
+          headers: c.req.raw.headers,
+          requestContext,
+        });
+      } catch (error) {
+        console.error("[api-mutation-audit]", safeErrorLabel(error));
+      }
+    });
+  });
 
   app.use("/api/*", async (c, next) => {
     if (

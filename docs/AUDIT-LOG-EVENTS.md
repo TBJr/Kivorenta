@@ -22,10 +22,23 @@ Canonical constants: `server/lib/audit-taxonomy.ts` (`AUDIT_ACTIONS`, `AUDIT_CAT
 | `contact_list_created` / `updated` / `deleted` | RECIPIENT_LIST | |
 | `suppression_created` | SUPPRESSION | |
 | `page_viewed` | ACTIVITY | SPA routes; server dedupes same actor+path within 30s |
+| `api_mutation` | ACTIVITY | Authenticated `POST`/`PUT`/`PATCH`/`DELETE` on `/api/*` (skips auth, health, page-view). May accompany a domain-specific event |
 | `admin_access_denied` | ADMINISTRATION | Permission check failures |
+| `campaign_created` / `updated` / `duplicated` / `cancelled` / `reverted_to_draft` / `marked_ready` / `deleted` | CAMPAIGN | Mirrored from campaign lifecycle into the global audit log |
 | `campaign_simulation_requested` | CAMPAIGN | Simulation only |
 | `campaign_simulation_completed` / `failed` | CAMPAIGN | Worker summary |
-| `campaign_cancelled` | CAMPAIGN | |
 | `queue_simulation_job_failed` | QUEUE | Terminal failures only |
+| `settings_credentials_updated` | SETTINGS | Reserved; mailbox credentials are env-configured today (not an in-app mutation) |
 
-Campaign-specific history remains in `campaign_events`; queue pipeline detail in `queue_events`.
+Campaign-specific history remains in `campaign_events`; queue pipeline detail in `queue_events`. High-signal campaign lifecycle events are also written to `admin_audit_events`.
+
+## Client context on every HTTP-originated event
+
+When a request runs through API middleware, `recordAuditEvent` merges:
+
+- `ip_address`, `user_agent`, `request_id` columns
+- `metadata.client` — parsed browser, OS, device type (from User-Agent)
+- `metadata.locale` — first `Accept-Language` value when present
+- `metadata.country` — `cf-ipcountry` when present (CDN hint)
+
+Worker/system events without an HTTP request leave these fields null.

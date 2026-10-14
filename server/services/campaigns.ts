@@ -11,7 +11,9 @@ import {
   contacts,
   emailSuppressions,
 } from "../db/schema.js";
+import { AUDIT_ACTIONS } from "../lib/audit-taxonomy.js";
 import { recordCampaignEvent, serializeCampaignEvent } from "./campaign-audit.js";
+import { recordAuditEvent } from "./audit-log.js";
 import {
   snapshotDraftIntoCampaign,
   validateCampaignContentFields,
@@ -621,6 +623,22 @@ export async function deleteCampaign(db: Database, userId: string, campaignId: s
     .delete(campaigns)
     .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)))
     .returning({ id: campaigns.id });
+
+  if (row) {
+    // campaign_events cascade-delete with the campaign; only the global audit row remains.
+    await recordAuditEvent(db, {
+      action: AUDIT_ACTIONS.campaignDeleted,
+      category: "CAMPAIGN",
+      eventType: "campaign",
+      result: "success",
+      actorUserId: userId,
+      resourceType: "campaign",
+      resourceId: campaignId,
+      metadata: { name: existing.name },
+    }).catch((error) => {
+      console.error("[audit] campaign delete", error instanceof Error ? error.name : "error");
+    });
+  }
 
   return row ?? null;
 }

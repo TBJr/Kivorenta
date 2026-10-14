@@ -184,7 +184,7 @@ export function registerMailRoutes(app: Hono) {
         return json(
           c,
           { error: "The test message could not be sent.", code: "test_send_failed" },
-          500,
+          502,
         );
       }
     }

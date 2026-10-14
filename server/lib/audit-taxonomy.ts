@@ -67,11 +67,18 @@ export const AUDIT_ACTIONS = {
   campaignSimulationRequested: "campaign_simulation_requested",
   campaignSimulationCompleted: "campaign_simulation_completed",
   campaignSimulationFailed: "campaign_simulation_failed",
+  campaignCreated: "campaign_created",
+  campaignUpdated: "campaign_updated",
+  campaignDuplicated: "campaign_duplicated",
   campaignCancelled: "campaign_cancelled",
+  campaignRevertedToDraft: "campaign_reverted_to_draft",
+  campaignMarkedReady: "campaign_marked_ready",
+  campaignDeleted: "campaign_deleted",
   queueSimulationJobFailed: "queue_simulation_job_failed",
   settingsCredentialsUpdated: "settings_credentials_updated",
   adminAccessDenied: "admin_access_denied",
   pageViewed: "page_viewed",
+  apiMutation: "api_mutation",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | string;
@@ -120,12 +127,19 @@ const ACTION_LABELS: Record<string, string> = {
   campaign_simulation_requested: "Campaign simulation queued",
   campaign_simulation_completed: "Campaign simulation completed",
   campaign_simulation_failed: "Campaign simulation failed",
+  campaign_created: "Campaign created",
+  campaign_updated: "Campaign updated",
+  campaign_duplicated: "Campaign duplicated",
   campaign_cancelled: "Campaign cancelled",
+  campaign_reverted_to_draft: "Campaign reverted to draft",
+  campaign_marked_ready: "Campaign marked ready",
+  campaign_deleted: "Campaign deleted",
   queue_simulation_job_failed: "Simulation job failed",
   settings_credentials_updated: "Mailbox credentials updated",
   admin_access_denied: "Administrative access denied",
   manual_email_verified: "Email manually verified",
   page_viewed: "Page viewed",
+  api_mutation: "API mutation",
 };
 
 export function auditActionLabel(action: string): string {
@@ -147,7 +161,9 @@ export function categoryForAction(action: string): AuditCategory {
   if (action.startsWith("campaign_")) return "CAMPAIGN";
   if (action.startsWith("queue_")) return "QUEUE";
   if (action.includes("settings") || action.includes("credentials")) return "SETTINGS";
-  if (action === "page_viewed" || action.startsWith("page_")) return "ACTIVITY";
+  if (action === "page_viewed" || action === "api_mutation" || action.startsWith("page_")) {
+    return "ACTIVITY";
+  }
   if (action === "admin_access_denied") return "ADMINISTRATION";
   return "ADMINISTRATION";
 }
