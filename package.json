@@ -59,7 +59,7 @@
     "csv-parse": "^7.0.3",
     "dotenv": "^18.0.6",
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.13",
+    "hono": "^4.13.18",
     "imapflow": "^2.3.0",
     "ioredis": "^6.0.0",
     "lucide-react": "^1.54.0",
